@@ -1,4 +1,4 @@
-
+// Standard Firebase v9+ modular SDK initialization
 import { initializeApp } from "firebase/app";
 import { getDatabase } from "firebase/database";
 import { getAuth } from "firebase/auth";
@@ -14,6 +14,7 @@ const firebaseConfig = {
   measurementId: "G-CFRWLZJCX6"
 };
 
+// Initialize Firebase and export services
 const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);
 export const auth = getAuth(app);
