@@ -1,8 +1,8 @@
 
 {
-  "name": "VibrantPOS - Frente de Caixa",
-  "short_name": "VibrantPOS",
-  "description": "Sistema de PDV Inteligente com Gestão em Nuvem",
+  "name": "Vendas Tenda JL",
+  "short_name": "Tenda JL",
+  "description": "Sistema de PDV Tenda JL com Gestão em Nuvem",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

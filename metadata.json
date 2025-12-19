@@ -1,6 +1,6 @@
 {
-  "name": "VibrantPOS - Frente de Caixa Inteligente",
-  "description": "Uma aplicação moderna de PDV com scanner de QR Code, gestão de estoque, clientes e emissão de comprovantes em PDF.",
+  "name": "Vendas Tenda JL - Frente de Caixa Inteligente",
+  "description": "PDV moderno da Tenda JL com scanner, gestão de estoque e consulta de lucros diários.",
   "requestFramePermissions": [
     "camera"
   ]
