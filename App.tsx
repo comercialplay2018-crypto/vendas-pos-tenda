@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ShoppingCart, Package, Users, History, Settings as SettingsIcon, 
   LogOut, Plus, Search, Trash2, Edit3, Camera, Download, X, Loader2, 
-  ShoppingBag, Printer, TrendingUp, Filter, BarChart3, Tent, Sparkles
+  ShoppingBag, Printer, TrendingUp, Filter, BarChart3, Tent, Sparkles, Calendar
 } from 'lucide-react';
 import { dbService, UserWithPin } from './services/dbService';
 import { Product, Customer, Sale, User, Settings as SettingsType, PaymentMethod, Installment } from './types';
@@ -89,10 +89,26 @@ const App: React.FC = () => {
   const calculateSubtotal = () => cart.reduce((sum, item) => sum + ((Number(item.product.sellPrice) - Number(item.discount)) * Number(item.qty)), 0);
   const calculateFee = () => (paymentMethod === 'crediario' ? calculateSubtotal() * 0.055 : 0);
   const calculateTotal = () => calculateSubtotal() + calculateFee();
+  
   const calculateChange = () => {
     const received = parseFloat(amountReceived) || 0;
     const total = calculateTotal();
     return Math.max(0, received - total);
+  };
+
+  const generateInstallments = (total: number, count: number): Installment[] => {
+    const installments: Installment[] = [];
+    const val = total / count;
+    for (let i = 1; i <= count; i++) {
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + (30 * i));
+      installments.push({
+        number: i,
+        value: Number(val.toFixed(2)),
+        dueDate: dueDate.toISOString()
+      });
+    }
+    return installments;
   };
 
   const finishSale = async () => {
@@ -134,9 +150,18 @@ const App: React.FC = () => {
         customerId: selectedCustomer?.id
       };
 
+      if (paymentMethod === 'crediario') {
+        saleData.installments = generateInstallments(total, installmentCount);
+      }
+
       const saleId = await dbService.saveSale(saleData);
       generateReceiptPDF({ ...saleData, id: saleId } as Sale, settings).catch(() => {});
-      setCart([]); setSelectedCustomer(null); setPaymentMethod('pix'); setAmountReceived('');
+      
+      setCart([]); 
+      setSelectedCustomer(null); 
+      setPaymentMethod('pix'); 
+      setAmountReceived('');
+      setInstallmentCount(1);
       alert("Venda Finalizada!");
     } catch (e: any) {
       alert("Erro ao finalizar: " + e.message);
@@ -145,7 +170,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Fix: Implemented handleLoginSubmit to handle user authentication via PIN
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoggingIn(true);
@@ -158,7 +182,6 @@ const App: React.FC = () => {
     setIsLoggingIn(false);
   };
 
-  // Fix: Implemented handleGenerateInsights using Gemini 3 Flash to analyze sales data
   const handleGenerateInsights = async () => {
     if (sales.length === 0) {
       alert("Não há vendas para analisar.");
@@ -174,9 +197,7 @@ const App: React.FC = () => {
         date: new Date(s.timestamp).toLocaleDateString()
       }));
 
-      const prompt = `Analise os seguintes dados de vendas da loja "${settings.companyName}" e forneça 3 insights estratégicos curtos e práticos em português para o proprietário:
-      
-      Dados recentes de vendas: ${JSON.stringify(salesSummary)}`;
+      const prompt = `Analise os dados de vendas da loja "${settings.companyName}" e forneça 3 insights estratégicos em português: ${JSON.stringify(salesSummary)}`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -187,8 +208,8 @@ const App: React.FC = () => {
         alert("INSIGHTS DA IA TENDA JL:\n\n" + response.text);
       }
     } catch (error) {
-      console.error("Erro ao gerar insights com IA:", error);
-      alert("Ocorreu um erro ao processar os dados com Inteligência Artificial.");
+      console.error("Erro AI:", error);
+      alert("Erro ao processar IA.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -199,17 +220,21 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-gradient-to-br from-orange-600 via-rose-500 to-amber-500 flex items-center justify-center p-4">
         <div className="bg-white p-10 rounded-[3rem] shadow-2xl w-full max-w-md border-t-[12px] border-orange-600">
           <div className="flex justify-center mb-10">
-            <div className="w-24 h-24 bg-gradient-to-tr from-orange-600 to-rose-500 rounded-3xl flex items-center justify-center text-white shadow-2xl rotate-3">
-              <Tent size={56} strokeWidth={2.5} />
-            </div>
+            {settings.logoUrl ? (
+               <img src={settings.logoUrl} alt="Logo" className="w-24 h-24 object-contain shadow-2xl rounded-3xl" />
+            ) : (
+              <div className="w-24 h-24 bg-gradient-to-tr from-orange-600 to-rose-500 rounded-3xl flex items-center justify-center text-white shadow-2xl rotate-3">
+                <Tent size={56} strokeWidth={2.5} />
+              </div>
+            )}
           </div>
-          <h1 className="text-4xl font-black text-center mb-2 text-gray-800 tracking-tighter">Tenda JL</h1>
-          <p className="text-center text-gray-400 text-[10px] font-black uppercase tracking-widest mb-10">Frente de Caixa Premium</p>
+          <h1 className="text-4xl font-black text-center mb-2 text-gray-800 tracking-tighter uppercase">{settings.companyName || "Tenda JL"}</h1>
+          <p className="text-center text-gray-400 text-[10px] font-black uppercase tracking-widest mb-10">Frente de Caixa Inteligente</p>
           <form onSubmit={handleLoginSubmit} className="space-y-6">
             <input type="text" placeholder="USUÁRIO" value={loginData.username} onChange={(e) => setLoginData({...loginData, username: e.target.value})} className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-2xl outline-none font-black focus:border-orange-500 transition-all text-center" required />
             <input type="password" placeholder="PIN" value={loginData.pin} onChange={(e) => setLoginData({...loginData, pin: e.target.value})} className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-2xl outline-none font-black focus:border-orange-500 transition-all text-center" required />
             <button type="submit" disabled={isLoggingIn} className="w-full py-6 bg-gradient-to-r from-orange-600 to-rose-500 text-white rounded-[2rem] font-black text-xl shadow-xl hover:brightness-110 active:scale-95 transition-all">
-              {isLoggingIn ? <Loader2 className="animate-spin mx-auto" size={28} /> : 'ENTRAR NO SISTEMA'}
+              {isLoggingIn ? <Loader2 className="animate-spin mx-auto" size={28} /> : 'INICIAR SESSÃO'}
             </button>
           </form>
         </div>
@@ -219,35 +244,40 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-50">
-      {/* SIDEBAR */}
       <nav className="hidden md:flex flex-col w-28 bg-white border-r shadow-2xl sticky top-0 h-screen overflow-y-auto z-30">
         <div className="p-4 flex flex-col items-center gap-8 py-12 h-full">
-          <div className="w-16 h-16 bg-gradient-to-tr from-orange-600 to-rose-500 rounded-2xl flex items-center justify-center text-white rotate-6 shadow-xl mb-6">
-            <Tent size={32} />
-          </div>
+          {settings.logoUrl ? (
+            <img src={settings.logoUrl} className="w-16 h-16 object-contain rounded-xl" />
+          ) : (
+            <div className="w-16 h-16 bg-gradient-to-tr from-orange-600 to-rose-500 rounded-2xl flex items-center justify-center text-white rotate-6 shadow-xl mb-6">
+              <Tent size={32} />
+            </div>
+          )}
           <div className="flex flex-col gap-6 flex-1 w-full px-2">
             <NavIcon icon={<ShoppingCart size={24}/>} active={activeTab === 'pos'} onClick={() => setActiveTab('pos')} label="Vendas" />
             <NavIcon icon={<Package size={24}/>} active={activeTab === 'inventory'} onClick={() => setActiveTab('inventory')} label="Estoque" />
             <NavIcon icon={<Users size={24}/>} active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} label="Clientes" />
             <NavIcon icon={<History size={24}/>} active={activeTab === 'sales'} onClick={() => setActiveTab('sales')} label="Relatórios" />
-            <NavIcon icon={<SettingsIcon size={24}/>} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} label="Ajustes" />
+            <NavIcon icon={<SettingsIcon size={24}/>} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} label="Menu" />
           </div>
           <NavIcon icon={<LogOut size={24}/>} onClick={() => setCurrentUser(null)} label="Sair" color="text-rose-400" />
         </div>
       </nav>
 
-      {/* HEADER MOBILE */}
       <header className="md:hidden bg-white border-b p-5 flex justify-between items-center sticky top-0 z-40 shadow-md">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-orange-600 rounded-xl flex items-center justify-center text-white">
-            <Tent size={22} />
-          </div>
-          <div className="font-black text-gray-800 text-xl tracking-tighter uppercase">Tenda JL</div>
+          {settings.logoUrl ? (
+            <img src={settings.logoUrl} className="w-10 h-10 object-contain" />
+          ) : (
+            <div className="w-10 h-10 bg-orange-600 rounded-xl flex items-center justify-center text-white">
+              <Tent size={22} />
+            </div>
+          )}
+          <div className="font-black text-gray-800 text-xl tracking-tighter uppercase">{settings.companyName || "Tenda JL"}</div>
         </div>
         <button onClick={() => setCurrentUser(null)} className="p-3 text-rose-500 bg-rose-50 rounded-xl"><LogOut size={22} /></button>
       </header>
 
-      {/* MAIN CONTENT */}
       <main className="flex-1 p-4 md:p-10 overflow-y-auto pb-28 md:pb-10">
         {activeTab === 'pos' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 relative">
@@ -266,7 +296,6 @@ const App: React.FC = () => {
                   <input type="text" placeholder="Pesquisar produto ou código..." className="flex-1 p-2 outline-none font-bold text-lg" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                   <button onClick={() => setIsScannerOpen(true)} className="p-5 bg-gradient-to-tr from-orange-600 to-rose-500 text-white rounded-2xl shadow-lg hover:scale-105 transition-all"><Camera size={28}/></button>
                 </div>
-
                 {searchResults.length > 0 && (
                   <div className="absolute top-full left-0 right-0 bg-white rounded-[2rem] shadow-2xl overflow-hidden divide-y border mt-4 max-h-80 overflow-y-auto z-[100] border-orange-100">
                     {searchResults.map(product => (
@@ -310,10 +339,6 @@ const App: React.FC = () => {
                           <input type="number" className="w-full p-4 bg-gray-50 border rounded-2xl font-black text-lg outline-none focus:border-orange-500" value={item.discount || ''} placeholder="0,00" onChange={(e) => updateCartItem(item.product.id, { discount: parseFloat(e.target.value) || 0 })} />
                         </div>
                       </div>
-                      <div className="mt-6 pt-6 border-t flex justify-between items-center">
-                        <span className="text-gray-400 font-black text-[10px] uppercase">Subtotal Item</span>
-                        <span className="text-2xl font-black text-gray-900">R$ {((Number(item.product.sellPrice) - item.discount) * item.qty).toFixed(2)}</span>
-                      </div>
                     </div>
                   ))}
                 </div>
@@ -325,7 +350,6 @@ const App: React.FC = () => {
               )}
             </div>
 
-            {/* Sidebar Checkout */}
             <div className="lg:col-span-4">
               <div className="bg-white p-10 rounded-[3rem] shadow-2xl space-y-8 border-2 border-orange-50 sticky top-10">
                 <h2 className="font-black text-2xl flex items-center gap-3"><ShoppingBag className="text-orange-600" size={32}/> Checkout</h2>
@@ -348,23 +372,41 @@ const App: React.FC = () => {
                     </select>
                   </div>
 
-                  {/* CAMPO DE VALOR RECEBIDO EM DINHEIRO */}
                   {paymentMethod === 'dinheiro' && (
                     <div className="space-y-2 animate-in slide-in-from-top-4 duration-300">
                       <label className="text-[11px] font-black text-orange-600 uppercase ml-2">Valor Recebido (R$)</label>
-                      <input 
-                        type="number" 
-                        placeholder="Ex: 100,00" 
-                        className="w-full p-5 bg-orange-50 border-2 border-orange-200 rounded-2xl font-black text-2xl outline-none focus:border-orange-600 text-orange-700"
-                        value={amountReceived}
-                        onChange={(e) => setAmountReceived(e.target.value)}
-                      />
+                      <input type="number" placeholder="Ex: 100,00" className="w-full p-5 bg-orange-50 border-2 border-orange-200 rounded-2xl font-black text-2xl outline-none focus:border-orange-600 text-orange-700" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} />
                       {parseFloat(amountReceived) > calculateTotal() && (
                         <div className="p-4 bg-green-50 border border-green-200 rounded-2xl flex justify-between items-center">
                           <span className="text-[10px] font-black text-green-600 uppercase">Troco</span>
                           <span className="text-xl font-black text-green-700">R$ {calculateChange().toFixed(2)}</span>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {/* OPÇÃO DE PARCELAMENTO PARA CREDIÁRIO */}
+                  {paymentMethod === 'crediario' && (
+                    <div className="space-y-4 animate-in slide-in-from-top-4 duration-300">
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-black text-orange-600 uppercase ml-2">Parcelas (Mensais)</label>
+                        <select className="w-full p-5 bg-orange-50 border-2 border-orange-200 rounded-2xl font-black text-xl outline-none focus:border-orange-600 text-orange-700" value={installmentCount} onChange={(e) => setInstallmentCount(Number(e.target.value))}>
+                          {[...Array(12)].map((_, i) => (
+                            <option key={i + 1} value={i + 1}>{i + 1}x de R$ {(calculateTotal() / (i + 1)).toFixed(2)}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="bg-orange-100/50 p-4 rounded-2xl border border-orange-200 space-y-2">
+                        <p className="text-[10px] font-black text-orange-600 uppercase flex items-center gap-2"><Calendar size={12}/> Projeção de Vencimentos</p>
+                        <div className="max-h-32 overflow-y-auto space-y-1 pr-2 scrollbar-thin">
+                          {generateInstallments(calculateTotal(), installmentCount).map((inst) => (
+                            <div key={inst.number} className="flex justify-between items-center text-[10px] font-bold text-gray-600 border-b border-orange-200/50 pb-1">
+                              <span>Parcela {inst.number}</span>
+                              <span>{new Date(inst.dueDate).toLocaleDateString()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -376,11 +418,7 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                <button 
-                  onClick={finishSale} 
-                  disabled={isFinishing || cart.length === 0} 
-                  className="w-full py-8 bg-gradient-to-r from-orange-600 to-rose-500 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl hover:scale-[1.03] active:scale-95 transition-all flex justify-center items-center gap-3 disabled:opacity-50"
-                >
+                <button onClick={finishSale} disabled={isFinishing || cart.length === 0} className="w-full py-8 bg-gradient-to-r from-orange-600 to-rose-500 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl hover:scale-[1.03] active:scale-95 transition-all flex justify-center items-center gap-3 disabled:opacity-50">
                   {isFinishing ? <Loader2 className="animate-spin" size={32}/> : "FINALIZAR AGORA"}
                 </button>
               </div>
@@ -427,7 +465,6 @@ const App: React.FC = () => {
         {activeTab === 'settings' && <SettingsView settings={settings} onSave={dbService.saveSettings} />}
       </main>
 
-      {/* MOBILE NAV */}
       <nav className="md:hidden fixed bottom-6 left-6 right-6 bg-white/95 backdrop-blur-2xl border border-gray-200 rounded-[2.5rem] shadow-2xl flex items-center justify-around p-3 z-[60]">
         <MobileNavIcon icon={<ShoppingCart/>} label="Vendas" active={activeTab === 'pos'} onClick={() => setActiveTab('pos')} />
         <MobileNavIcon icon={<Package/>} label="Estoque" active={activeTab === 'inventory'} onClick={() => setActiveTab('inventory')} />
@@ -455,10 +492,8 @@ const MobileNavIcon = ({ icon, label, active, onClick }: any) => (
   </button>
 );
 
-// INVENTORY VIEW
 const InventoryView = ({ products, onSave, onDelete, onEdit, onAddNew, isModalOpen, setIsModalOpen, editingProduct, onPrintAll }: any) => {
   const [formData, setFormData] = useState({ name: '', code: '', sellPrice: '', buyPrice: '', quantity: '' });
-
   useEffect(() => {
     if (editingProduct) {
       setFormData({
@@ -514,36 +549,31 @@ const InventoryView = ({ products, onSave, onDelete, onEdit, onAddNew, isModalOp
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {products.length === 0 ? (
-                <tr><td colSpan={6} className="p-32 text-center opacity-10 font-black text-3xl uppercase">Sem Produtos</td></tr>
-              ) : (
-                products.map((p: any) => (
-                  <tr key={p.id} className="hover:bg-orange-50/30 transition-colors">
-                    <td className="p-8 font-mono font-black text-orange-600">{p.code}</td>
-                    <td className="p-8 font-black text-gray-800 text-lg">{p.name}</td>
-                    <td className="p-8 font-bold text-gray-400">R$ {Number(p.buyPrice || 0).toFixed(2)}</td>
-                    <td className="p-8 font-black text-xl">R$ {Number(p.sellPrice).toFixed(2)}</td>
-                    <td className="p-8">
-                      <div className={`inline-flex items-center px-5 py-2 rounded-2xl text-xs font-black uppercase ${p.quantity < 5 ? 'bg-rose-100 text-rose-600 shadow-[0_0_10px_rgba(225,29,72,0.1)]' : 'bg-green-100 text-green-600 shadow-[0_0_10px_rgba(22,163,74,0.1)]'}`}>
-                        {p.quantity} UN
-                      </div>
-                    </td>
-                    <td className="p-8">
-                      <div className="flex justify-center gap-3">
-                        <button onClick={() => generateLabelPDF(p, 1)} title="Etiqueta Un." className="p-4 text-orange-600 bg-orange-50 rounded-2xl hover:bg-orange-100 transition-all"><Printer size={20}/></button>
-                        <button onClick={() => onEdit(p)} className="p-4 text-blue-600 bg-blue-50 rounded-2xl hover:bg-blue-100 transition-all"><Edit3 size={20}/></button>
-                        <button onClick={() => confirm('Apagar este produto?') && onDelete(p.id)} className="p-4 text-rose-600 bg-rose-50 rounded-2xl hover:bg-rose-100 transition-all"><Trash2 size={20}/></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
+              {products.map((p: any) => (
+                <tr key={p.id} className="hover:bg-orange-50/30 transition-colors">
+                  <td className="p-8 font-mono font-black text-orange-600">{p.code}</td>
+                  <td className="p-8 font-black text-gray-800 text-lg">{p.name}</td>
+                  <td className="p-8 font-bold text-gray-400">R$ {Number(p.buyPrice || 0).toFixed(2)}</td>
+                  <td className="p-8 font-black text-xl">R$ {Number(p.sellPrice).toFixed(2)}</td>
+                  <td className="p-8">
+                    <div className={`inline-flex items-center px-5 py-2 rounded-2xl text-xs font-black uppercase ${p.quantity < 5 ? 'bg-rose-100 text-rose-600' : 'bg-green-100 text-green-600'}`}>
+                      {p.quantity} UN
+                    </div>
+                  </td>
+                  <td className="p-8">
+                    <div className="flex justify-center gap-3">
+                      <button onClick={() => generateLabelPDF(p, 1)} className="p-4 text-orange-600 bg-orange-50 rounded-2xl hover:bg-orange-100 transition-all"><Printer size={20}/></button>
+                      <button onClick={() => onEdit(p)} className="p-4 text-blue-600 bg-blue-50 rounded-2xl hover:bg-blue-100 transition-all"><Edit3 size={20}/></button>
+                      <button onClick={() => confirm('Apagar este produto?') && onDelete(p.id)} className="p-4 text-rose-600 bg-rose-50 rounded-2xl hover:bg-rose-100 transition-all"><Trash2 size={20}/></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* MODAL PRODUTO */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-xl rounded-[3rem] p-10 shadow-3xl border-t-[10px] border-orange-600">
@@ -552,32 +582,17 @@ const InventoryView = ({ products, onSave, onDelete, onEdit, onAddNew, isModalOp
               <button onClick={() => setIsModalOpen(false)} className="p-4 bg-gray-100 rounded-full hover:bg-rose-50 hover:text-rose-500 transition-all"><X size={24}/></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-[11px] font-black text-gray-400 uppercase ml-2">Nome Comercial</label>
-                <input required placeholder="Nome do Produto" className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-3xl font-black text-lg outline-none focus:border-orange-600" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} />
+              <input required placeholder="Nome do Produto" className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-3xl font-black text-lg outline-none focus:border-orange-600" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} />
+              <div className="grid grid-cols-2 gap-6">
+                 <input required placeholder="CÓDIGO" className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-3xl font-black text-lg outline-none focus:border-orange-600" value={formData.code} onChange={e=>setFormData({...formData, code: e.target.value})} />
+                 <input required placeholder="VENDA R$ 0,00" type="number" step="0.01" className="w-full p-5 bg-orange-50 border-2 border-orange-100 rounded-3xl font-black text-2xl outline-none focus:border-orange-600 text-orange-700" value={formData.sellPrice} onChange={e=>setFormData({...formData, sellPrice: e.target.value})} />
               </div>
               <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                   <label className="text-[11px] font-black text-gray-400 uppercase ml-2">Cód. Identificação</label>
-                   <input required placeholder="CÓDIGO" className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-3xl font-black text-lg outline-none focus:border-orange-600" value={formData.code} onChange={e=>setFormData({...formData, code: e.target.value})} />
-                </div>
-                <div className="space-y-2">
-                   <label className="text-[11px] font-black text-orange-600 uppercase ml-2">Preço de Venda</label>
-                   <input required placeholder="R$ 0,00" type="number" step="0.01" className="w-full p-5 bg-orange-50 border-2 border-orange-100 rounded-3xl font-black text-2xl outline-none focus:border-orange-600 text-orange-700" value={formData.sellPrice} onChange={e=>setFormData({...formData, sellPrice: e.target.value})} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                   <label className="text-[11px] font-black text-gray-400 uppercase ml-2">Preço de Custo</label>
-                   <input required placeholder="R$ 0,00" type="number" step="0.01" className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-3xl font-black text-lg outline-none focus:border-orange-600" value={formData.buyPrice} onChange={e=>setFormData({...formData, buyPrice: e.target.value})} />
-                </div>
-                <div className="space-y-2">
-                   <label className="text-[11px] font-black text-gray-400 uppercase ml-2">Qtd em Estoque</label>
-                   <input required placeholder="0" type="number" className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-3xl font-black text-lg outline-none focus:border-orange-600" value={formData.quantity} onChange={e=>setFormData({...formData, quantity: e.target.value})} />
-                </div>
+                 <input required placeholder="CUSTO R$ 0,00" type="number" step="0.01" className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-3xl font-black text-lg outline-none focus:border-orange-600" value={formData.buyPrice} onChange={e=>setFormData({...formData, buyPrice: e.target.value})} />
+                 <input required placeholder="ESTOQUE" type="number" className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-3xl font-black text-lg outline-none focus:border-orange-600" value={formData.quantity} onChange={e=>setFormData({...formData, quantity: e.target.value})} />
               </div>
               <button type="submit" className="w-full py-6 bg-gradient-to-r from-orange-600 to-rose-500 text-white font-black text-xl rounded-3xl shadow-2xl hover:brightness-110 active:scale-95 transition-all mt-6">
-                {editingProduct ? 'CONCLUIR ATUALIZAÇÃO' : 'EFETIVAR CADASTRO'}
+                {editingProduct ? 'ATUALIZAR' : 'CADASTRAR'}
               </button>
             </form>
           </div>
@@ -587,7 +602,6 @@ const InventoryView = ({ products, onSave, onDelete, onEdit, onAddNew, isModalOp
   );
 };
 
-// CUSTOMERS VIEW
 const CustomersView = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIsModalOpen, editingCustomer }: any) => {
   const [formData, setFormData] = useState({ name: '', contact: '' });
   useEffect(() => {
@@ -599,11 +613,11 @@ const CustomersView = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIs
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-black text-gray-800 tracking-tighter">Clientes Fidelizados</h1>
+          <h1 className="text-3xl font-black text-gray-800 tracking-tighter">Fidelização</h1>
           <p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Base de Dados Tenda JL</p>
         </div>
         <button onClick={onAddNew} className="bg-rose-500 text-white px-8 py-5 rounded-[2rem] font-black shadow-2xl flex items-center gap-3 hover:scale-105 transition-all">
-          <Plus size={22}/> ADICIONAR CLIENTE
+          <Plus size={22}/> NOVO CLIENTE
         </button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -630,9 +644,9 @@ const CustomersView = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIs
               <button onClick={() => setIsModalOpen(false)} className="p-4 bg-gray-100 rounded-full hover:bg-rose-50 transition-all"><X size={24}/></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-6">
-              <input required placeholder="NOME COMPLETO" className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-3xl font-black text-lg outline-none focus:border-rose-500" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} />
-              <input placeholder="WHATSAPP / CELULAR" className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-3xl font-black text-lg outline-none focus:border-rose-500" value={formData.contact} onChange={e=>setFormData({...formData, contact: e.target.value})} />
-              <button type="submit" className="w-full py-6 bg-rose-500 text-white font-black text-xl rounded-3xl shadow-2xl hover:brightness-110 transition-all mt-6">FINALIZAR CADASTRO</button>
+              <input required placeholder="NOME" className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-3xl font-black text-lg outline-none focus:border-rose-500" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} />
+              <input placeholder="WHATSAPP" className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-3xl font-black text-lg outline-none focus:border-rose-500" value={formData.contact} onChange={e=>setFormData({...formData, contact: e.target.value})} />
+              <button type="submit" className="w-full py-6 bg-rose-500 text-white font-black text-xl rounded-3xl shadow-2xl hover:brightness-110 transition-all mt-6">SALVAR</button>
             </form>
           </div>
         </div>
@@ -641,7 +655,6 @@ const CustomersView = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIs
   );
 };
 
-// SALES HISTORY
 const SalesHistory = ({ sales, dailyEarnings, settings, onGenerateInsights, isAnalyzing }: any) => {
   const [customerFilter, setCustomerFilter] = useState('');
   const filteredSales = useMemo(() => sales.filter((s: Sale) => s.customerName?.toLowerCase().includes(customerFilter.toLowerCase())), [sales, customerFilter]);
@@ -649,47 +662,36 @@ const SalesHistory = ({ sales, dailyEarnings, settings, onGenerateInsights, isAn
     <div className="space-y-8">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="bg-gradient-to-tr from-orange-600 to-rose-500 p-10 rounded-[3rem] shadow-2xl text-white">
-          <p className="text-[11px] font-black uppercase opacity-70 tracking-widest mb-2">Total Vendido Hoje</p>
+          <p className="text-[11px] font-black uppercase opacity-70 tracking-widest mb-2">Total Hoje</p>
           <h3 className="text-5xl font-black tracking-tighter">R$ {dailyEarnings.toFixed(2)}</h3>
-          <p className="text-[10px] font-bold opacity-50 mt-4 uppercase">Relatório em tempo real</p>
         </div>
         <div className="col-span-1 md:col-span-2 bg-white p-10 rounded-[3rem] border-2 border-gray-100 shadow-xl flex flex-col justify-center">
           <div className="flex items-center gap-5 bg-gray-50 p-6 rounded-3xl border-2 border-transparent focus-within:border-orange-300 transition-all shadow-inner">
             <Filter className="text-gray-300" size={30} />
-            <input type="text" placeholder="Filtrar por nome de cliente..." className="bg-transparent flex-1 outline-none font-black text-lg" value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)} />
-            {customerFilter && <button onClick={() => setCustomerFilter('')} className="p-2 text-gray-300 hover:text-rose-500"><X size={20}/></button>}
+            <input type="text" placeholder="Pesquisar por cliente..." className="bg-transparent flex-1 outline-none font-black text-lg" value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)} />
           </div>
         </div>
-      </div>
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-black text-gray-800 tracking-tighter">Vendas Concluídas</h2>
-        <button onClick={onGenerateInsights} disabled={isAnalyzing || sales.length === 0} className="bg-gray-100 text-gray-600 px-8 py-4 rounded-[2rem] font-black text-xs flex items-center gap-3 hover:bg-orange-600 hover:text-white transition-all disabled:opacity-50 shadow-sm">
-          {isAnalyzing ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />} INTELIGÊNCIA ARTIFICIAL
-        </button>
       </div>
       <div className="bg-white rounded-[3rem] shadow-2xl overflow-hidden border-2 border-gray-100">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-gray-50 text-[11px] font-black text-gray-400 uppercase tracking-widest border-b-2">
               <tr>
-                <th className="p-8">Horário</th>
+                <th className="p-8">Data/Hora</th>
                 <th className="p-8">Cliente</th>
-                <th className="p-8">Forma de Pagto</th>
-                <th className="p-8">Valor Total</th>
-                <th className="p-8 text-center">PDF</th>
+                <th className="p-8">Pagamento</th>
+                <th className="p-8">Total</th>
+                <th className="p-8 text-center">Cupom</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filteredSales.map((s: any) => (
                 <tr key={s.id} className="hover:bg-orange-50/20 transition-colors">
-                  <td className="p-8">
-                    <div className="font-black text-gray-800 text-lg">{new Date(s.timestamp).toLocaleDateString()}</div>
-                    <div className="text-[10px] text-gray-400 font-black uppercase">{new Date(s.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
-                  </td>
-                  <td className="p-8"><div className="font-black text-gray-700">{s.customerName || 'Venda Balcão'}</div></td>
+                  <td className="p-8 font-black text-gray-800">{new Date(s.timestamp).toLocaleDateString()} {new Date(s.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</td>
+                  <td className="p-8 font-black text-gray-700">{s.customerName || 'Venda Balcão'}</td>
                   <td className="p-8"><span className="text-[10px] font-black px-4 py-2 bg-gray-100 rounded-xl uppercase tracking-widest">{s.paymentMethod}</span></td>
                   <td className="p-8 font-black text-2xl text-gray-900">R$ {Number(s.total).toFixed(2)}</td>
-                  <td className="p-8 text-center"><button onClick={() => generateReceiptPDF(s, settings)} className="p-5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-2xl transition-all shadow-sm"><Download size={24}/></button></td>
+                  <td className="p-8 text-center"><button onClick={() => generateReceiptPDF(s, settings)} className="p-5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-2xl transition-all"><Download size={24}/></button></td>
                 </tr>
               ))}
             </tbody>
@@ -704,22 +706,22 @@ const SettingsView = ({ settings, onSave }: any) => {
   const [ls, setLs] = useState(settings);
   return (
     <div className="bg-white p-12 rounded-[3rem] border-2 border-gray-100 shadow-3xl max-w-xl space-y-10 border-t-[10px] border-orange-600">
-      <h2 className="text-3xl font-black text-gray-800 tracking-tighter flex items-center gap-4"><SettingsIcon className="text-orange-600" size={36} /> Configurações Gerais</h2>
+      <h2 className="text-3xl font-black text-gray-800 tracking-tighter flex items-center gap-4"><SettingsIcon className="text-orange-600" size={36} /> Ajustes da Loja</h2>
       <div className="space-y-6">
         <div className="space-y-2">
-          <label className="text-[11px] font-black text-gray-400 uppercase ml-2">Razão Social / Nome da Loja</label>
+          <label className="text-[11px] font-black text-gray-400 uppercase ml-2">Nome Comercial</label>
           <input className="w-full p-6 bg-gray-50 border-2 border-transparent rounded-3xl font-black text-xl outline-none focus:border-orange-600" value={ls.companyName} onChange={(e)=>setLs({...ls, companyName:e.target.value})} />
         </div>
         <div className="space-y-2">
-          <label className="text-[11px] font-black text-gray-400 uppercase ml-2">Logo URL (Opcional)</label>
+          <label className="text-[11px] font-black text-gray-400 uppercase ml-2">Logo URL (Imagens PNG/JPG)</label>
           <input className="w-full p-6 bg-gray-50 border-2 border-transparent rounded-3xl font-black text-lg outline-none focus:border-orange-600" placeholder="https://..." value={ls.logoUrl || ''} onChange={(e)=>setLs({...ls, logoUrl:e.target.value})} />
         </div>
         <div className="space-y-2">
-          <label className="text-[11px] font-black text-gray-400 uppercase ml-2">QR Code PIX URL</label>
+          <label className="text-[11px] font-black text-gray-400 uppercase ml-2">QR Code PIX (URL da imagem)</label>
           <input className="w-full p-6 bg-gray-50 border-2 border-transparent rounded-3xl font-black text-lg outline-none focus:border-orange-600" placeholder="https://..." value={ls.pixQrUrl || ''} onChange={(e)=>setLs({...ls, pixQrUrl:e.target.value})} />
         </div>
       </div>
-      <button onClick={() => onSave(ls)} className="w-full py-7 bg-orange-600 text-white font-black text-2xl rounded-3xl shadow-2xl hover:brightness-110 active:scale-95 transition-all">EFETUAR ALTERAÇÕES</button>
+      <button onClick={() => onSave(ls)} className="w-full py-7 bg-orange-600 text-white font-black text-2xl rounded-3xl shadow-2xl hover:brightness-110 active:scale-95 transition-all">SALVAR</button>
     </div>
   );
 };

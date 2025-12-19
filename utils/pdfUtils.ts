@@ -42,30 +42,21 @@ const loadImage = (url: string | undefined): Promise<string> => {
 };
 
 const drawSingleLabel = async (doc: jsPDF, product: Product, x: number, y: number, width: number, height: number) => {
-    // Borda da etiqueta (ajuda no corte)
     doc.setDrawColor(220);
     doc.rect(x, y, width, height);
-
-    // QR Code no canto esquerdo
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${product.code}`;
     try {
       const qrBase64 = await loadImage(qrUrl);
       if (qrBase64) doc.addImage(qrBase64, 'PNG', x + 2, y + 5, 18, 18);
     } catch(e) {}
-
-    // Nome do Produto
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(40, 40, 40);
     const splitName = doc.splitTextToSize(product.name.toUpperCase(), width - 24);
     doc.text(splitName, x + 22, y + 7);
-    
-    // Código do Produto
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6);
     doc.text(`COD: ${product.code}`, x + 22, y + 17);
-    
-    // Preço de Venda em destaque
     doc.setFontSize(14);
     doc.setTextColor(0, 0, 0);
     doc.text(`R$ ${(product.sellPrice || 0).toFixed(2)}`, x + width - 2, y + height - 4, { align: 'right' });
@@ -82,7 +73,6 @@ export const generateLabelPDF = async (product: Product, quantity: number) => {
   const cols = 3; 
   const rows = 9; 
   const perPage = cols * rows;
-  
   for (let i = 0; i < quantity; i++) {
     const itemOnPageIndex = i % perPage;
     if (i > 0 && itemOnPageIndex === 0) doc.addPage();
@@ -107,7 +97,6 @@ export const generateAllLabelsPDF = async (products: Product[]) => {
   const cols = 3; 
   const rows = 9; 
   const perPage = cols * rows;
-
   for (let i = 0; i < products.length; i++) {
     const itemOnPageIndex = i % perPage;
     if (i > 0 && itemOnPageIndex === 0) doc.addPage();
@@ -125,12 +114,13 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   const width = 80;
   let y = 10;
 
+  // CABEÇALHO COM LOGO (REMOVIDO NOMES ESTRANHOS)
   if (settings.logoUrl) {
     try {
       const logo = await loadImage(settings.logoUrl);
       if (logo) {
-        doc.addImage(logo, 'PNG', (width - 25) / 2, y, 25, 25);
-        y += 28;
+        doc.addImage(logo, 'PNG', (width - 30) / 2, y, 30, 30);
+        y += 35;
       }
     } catch (e) {}
   }
@@ -140,15 +130,13 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   doc.text(settings.companyName || "Tenda JL", width / 2, y, { align: 'center' });
   y += 6;
   doc.setFontSize(8);
-  doc.text(`CUPOM DE VENDA`, width / 2, y, { align: 'center' });
+  doc.text(`COMPROVANTE DE VENDA`, width / 2, y, { align: 'center' });
   y += 8;
 
   const date = new Date(sale.timestamp);
   doc.setFont('helvetica', 'normal');
-  doc.text(`VENDA #${(sale.id || '').substring(0, 8)}`, 5, y);
+  doc.text(`RECIBO: #${(sale.id || '').substring(0, 8)}`, 5, y);
   doc.text(date.toLocaleDateString(), width - 5, y, { align: 'right' });
-  y += 4;
-  doc.text(`HORÁRIO: ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`, 5, y);
   y += 4;
   doc.text(`VENDEDOR: ${sale.sellerName}`, 5, y);
   y += 4;
@@ -160,10 +148,10 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   y += 2;
   doc.setLineWidth(0.1);
   doc.line(5, y, width - 5, y);
-  y += 6;
+  y += 5;
 
   doc.setFont('helvetica', 'bold');
-  doc.text('ITEM', 5, y);
+  doc.text('DESCRIÇÃO', 5, y);
   doc.text('QTD', width - 25, y, { align: 'right' });
   doc.text('TOTAL', width - 5, y, { align: 'right' });
   y += 5;
@@ -174,18 +162,17 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
     const itemDiscount = item.discount || 0;
     const lineTotal = (unitPrice - itemDiscount) * item.quantity;
     doc.setFont('helvetica', 'bold');
-    doc.text(item.name.substring(0, 30), 5, y);
+    doc.text(item.name.toUpperCase().substring(0, 35), 5, y);
     y += 4;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
-    doc.text(`Un: R$ ${unitPrice.toFixed(2)} / Desc: R$ ${itemDiscount.toFixed(2)}`, 7, y);
+    doc.text(`${item.quantity} un x R$ ${unitPrice.toFixed(2)}`, 7, y);
     doc.setFontSize(8);
-    doc.text(`${item.quantity}`, width - 25, y, { align: 'right' });
     doc.text(`R$ ${lineTotal.toFixed(2)}`, width - 5, y, { align: 'right' });
     y += 5;
   });
 
-  y += 4;
+  y += 2;
   doc.line(5, y, width - 5, y);
   y += 6;
   
@@ -195,7 +182,7 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   y += 5;
 
   if (sale.fee) {
-    doc.text('TAXA ADICIONAL:', 5, y);
+    doc.text('TAXA (CREDIÁRIO):', 5, y);
     doc.text(`R$ ${sale.fee.toFixed(2)}`, width - 5, y, { align: 'right' });
     y += 5;
   }
@@ -207,42 +194,46 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   y += 8;
 
   doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`PAGAMENTO: ${(sale.paymentMethod || '').toUpperCase()}`, 5, y);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`FORMA DE PAGTO: ${(sale.paymentMethod || '').toUpperCase()}`, 5, y);
   y += 6;
 
+  // DETALHES DO CREDIÁRIO NO COMPROVANTE
   if (sale.installments && sale.installments.length > 0) {
-    doc.setFont('helvetica', 'bold');
-    doc.text('DETALHE DO PARCELAMENTO:', 5, y);
+    doc.line(5, y, width - 5, y);
     y += 5;
+    doc.text('VENCIMENTOS DO CREDIÁRIO:', 5, y);
+    y += 4;
     doc.setFont('helvetica', 'normal');
     sale.installments.forEach(inst => {
       const d = new Date(inst.dueDate).toLocaleDateString();
-      doc.text(`${inst.number}x - Venc: ${d}`, 7, y);
+      doc.text(`Parc. ${inst.number}: ${d}`, 7, y);
       doc.text(`R$ ${inst.value.toFixed(2)}`, width - 5, y, { align: 'right' });
       y += 4;
     });
-    y += 6;
+    y += 4;
   }
 
+  // IMAGEM DO PIX NO RODAPÉ (INCLUÍDO PARA CREDIÁRIO TAMBÉM CONFORME PEDIDO)
   if (settings.pixQrUrl && (sale.paymentMethod === 'pix' || sale.paymentMethod === 'crediario')) {
     try {
       const pix = await loadImage(settings.pixQrUrl);
       if (pix) {
-        doc.line(5, y - 2, width - 5, y - 2);
         y += 5;
+        doc.line(5, y, width - 5, y);
+        y += 8;
         doc.setFont('helvetica', 'bold');
-        doc.text('PAGAMENTO VIA PIX', width / 2, y, { align: 'center' });
-        y += 4;
-        doc.addImage(pix, 'PNG', (width - 40) / 2, y, 40, 40);
-        y += 45;
+        doc.text('PAGUE VIA PIX', width / 2, y, { align: 'center' });
+        y += 5;
+        doc.addImage(pix, 'PNG', (width - 45) / 2, y, 45, 45);
+        y += 50;
       }
     } catch (e) {}
   }
 
-  y += 6;
+  y += 10;
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7);
-  doc.text('Obrigado pela preferência!', width / 2, y, { align: 'center' });
-  doc.save(`cupom-${(sale.id || '').substring(0, 8)}.pdf`);
+  doc.text('TENDA JL - AGRADECEMOS A PREFERÊNCIA!', width / 2, y, { align: 'center' });
+  doc.save(`venda-${(sale.id || '').substring(0, 8)}.pdf`);
 };
