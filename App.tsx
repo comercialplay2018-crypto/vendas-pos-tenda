@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ShoppingCart, Package, Users, History, Settings as SettingsIcon, 
   LogOut, Plus, Search, Trash2, Edit3, Camera, Download, X, Loader2, 
   ShoppingBag, Upload, Image as ImageIcon, CheckSquare, Square, Save, 
-  Sparkles, Wand2, Tent, TrendingUp, Filter, BarChart3, CalendarDays
+  Sparkles, Wand2, Tent, TrendingUp, Filter, BarChart3, CalendarDays, Printer
 } from 'lucide-react';
 import { dbService, UserWithPin } from './services/dbService';
 import { Product, Customer, Sale, User, Settings as SettingsType, PaymentMethod, Installment } from './types';
@@ -198,7 +199,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Improved handleGenerateInsights using the Pro model for complex reasoning
   const handleGenerateInsights = async () => {
     if (sales.length === 0) return alert("Não há vendas para analisar.");
     setIsAnalyzing(true);
@@ -501,7 +501,7 @@ const MobileNavIcon = ({ icon, label, active, onClick }: any) => (
   </button>
 );
 
-// INVENTORY VIEW COM CONSULTA POR PERÍODO
+// INVENTORY VIEW COM CONSULTA POR PERÍODO E BOTÃO DE ETIQUETAS
 const InventoryView = ({ products, sales, onSave, onDelete, onEdit, onAddNew, isModalOpen, setIsModalOpen, editingProduct }: any) => {
   const [formData, setFormData] = useState({ name: '', code: '', sellPrice: '', buyPrice: '', quantity: '' });
   const [isConsultOpen, setIsConsultOpen] = useState(false);
@@ -573,6 +573,7 @@ const InventoryView = ({ products, sales, onSave, onDelete, onEdit, onAddNew, is
               <tr>
                 <th className="p-6">Código</th>
                 <th className="p-6">Nome</th>
+                <th className="p-6">Custo</th>
                 <th className="p-6">Venda</th>
                 <th className="p-6">Estoque</th>
                 <th className="p-6 text-center">Ações</th>
@@ -580,12 +581,13 @@ const InventoryView = ({ products, sales, onSave, onDelete, onEdit, onAddNew, is
             </thead>
             <tbody className="divide-y">
               {products.length === 0 ? (
-                <tr><td colSpan={5} className="p-20 text-center opacity-20 font-black uppercase">Nenhum produto cadastrado</td></tr>
+                <tr><td colSpan={6} className="p-20 text-center opacity-20 font-black uppercase">Nenhum produto cadastrado</td></tr>
               ) : (
                 products.map((p: any) => (
                   <tr key={p.id} className="hover:bg-gray-50 transition-colors">
                     <td className="p-6 font-mono font-bold text-orange-500">{p.code}</td>
                     <td className="p-6 font-bold text-gray-800">{p.name}</td>
+                    <td className="p-6 font-bold text-gray-400">R$ {Number(p.buyPrice || 0).toFixed(2)}</td>
                     <td className="p-6 font-black">R$ {Number(p.sellPrice).toFixed(2)}</td>
                     <td className="p-6">
                       <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${p.quantity < 5 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
@@ -593,6 +595,7 @@ const InventoryView = ({ products, sales, onSave, onDelete, onEdit, onAddNew, is
                       </span>
                     </td>
                     <td className="p-6 flex justify-center gap-2">
+                      <button onClick={() => generateLabelPDF(p, 1)} title="Imprimir 1 Etiqueta" className="p-3 text-orange-500 hover:bg-orange-50 rounded-xl transition-colors"><Printer size={18}/></button>
                       <button onClick={() => onEdit(p)} className="p-3 text-blue-400 hover:bg-blue-50 rounded-xl transition-colors"><Edit3 size={18}/></button>
                       <button onClick={() => confirm('Excluir?') && onDelete(p.id)} className="p-3 text-red-400 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={18}/></button>
                     </td>
@@ -660,10 +663,20 @@ const InventoryView = ({ products, sales, onSave, onDelete, onEdit, onAddNew, is
                 <input required placeholder="Código" className="w-full p-4 bg-gray-50 border rounded-2xl font-bold" value={formData.code} onChange={e=>setFormData({...formData, code: e.target.value})} />
                 <input required placeholder="Venda (R$)" type="number" step="0.01" className="w-full p-4 bg-gray-50 border rounded-2xl font-bold" value={formData.sellPrice} onChange={e=>setFormData({...formData, sellPrice: e.target.value})} />
               </div>
-              <input required placeholder="Estoque" type="number" className="w-full p-4 bg-gray-50 border rounded-2xl font-bold" value={formData.quantity} onChange={e=>setFormData({...formData, quantity: e.target.value})} />
-              <button type="submit" className="w-full py-5 bg-orange-500 text-white font-black rounded-2xl shadow-xl mt-4">
-                {editingProduct ? 'ATUALIZAR' : 'CADASTRAR'}
-              </button>
+              <div className="grid grid-cols-2 gap-4">
+                <input required placeholder="Custo (R$)" type="number" step="0.01" className="w-full p-4 bg-gray-50 border rounded-2xl font-bold" value={formData.buyPrice} onChange={e=>setFormData({...formData, buyPrice: e.target.value})} />
+                <input required placeholder="Estoque" type="number" className="w-full p-4 bg-gray-50 border rounded-2xl font-bold" value={formData.quantity} onChange={e=>setFormData({...formData, quantity: e.target.value})} />
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button type="submit" className="flex-1 py-5 bg-orange-500 text-white font-black rounded-2xl shadow-xl">
+                  {editingProduct ? 'ATUALIZAR' : 'CADASTRAR'}
+                </button>
+                {editingProduct && (
+                   <button type="button" onClick={() => generateLabelPDF(editingProduct, 1)} className="px-6 py-5 bg-orange-100 text-orange-600 rounded-2xl font-black shadow-sm flex items-center gap-2">
+                     <Printer size={20}/>
+                   </button>
+                )}
+              </div>
             </form>
           </div>
         </div>

@@ -43,15 +43,17 @@ const loadImage = (url: string | undefined): Promise<string> => {
 
 export const generateLabelPDF = async (product: Product, quantity: number) => {
   const doc = new jsPDF('p', 'mm', 'a4');
+  
+  // Configurações para etiquetas 6x3cm (60x30mm)
   const labelWidth = 60;
   const labelHeight = 30;
   const marginX = 10;
-  const marginY = 10;
-  const spacingX = 5;
-  const spacingY = 5;
+  const marginY = 13;
+  const spacingX = 2;
+  const spacingY = 1;
   
-  const cols = Math.floor((210 - marginX * 2) / (labelWidth + spacingX)) || 1;
-  const rows = Math.floor((297 - marginY * 2) / (labelHeight + spacingY)) || 1;
+  const cols = 3; // 60 * 3 = 180mm + espaços cabe no A4 (210mm)
+  const rows = 9; // 30 * 9 = 270mm + espaços cabe no A4 (297mm)
   const perPage = cols * rows;
   
   for (let i = 0; i < quantity; i++) {
@@ -66,31 +68,38 @@ export const generateLabelPDF = async (product: Product, quantity: number) => {
     const x = marginX + col * (labelWidth + spacingX);
     const y = marginY + row * (labelHeight + spacingY);
 
-    doc.setDrawColor(220);
+    // Borda da etiqueta (opcional, mas ajuda no corte)
+    doc.setDrawColor(230);
     doc.rect(x, y, labelWidth, labelHeight);
 
+    // QR Code no canto esquerdo
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${product.code}`;
+    try {
+      const qrBase64 = await loadImage(qrUrl);
+      if (qrBase64) doc.addImage(qrBase64, 'PNG', x + 2, y + 5, 18, 18);
+    } catch(e) {}
+
+    // Nome do Produto (Centro/Direita)
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text(product.name.substring(0, 35), x + 2, y + 5);
+    doc.setFontSize(7);
+    doc.setTextColor(50, 50, 50);
+    const splitName = doc.splitTextToSize(product.name.toUpperCase(), labelWidth - 24);
+    doc.text(splitName, x + 22, y + 7);
     
+    // Código do Produto
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6);
-    doc.text(`CÓDIGO: ${product.code}`, x + 2, y + 10);
+    doc.text(`COD: ${product.code}`, x + 22, y + 17);
     
+    // Preço de Venda em destaque
     doc.setFontSize(14);
     doc.setTextColor(0, 0, 0);
     doc.text(`R$ ${(product.sellPrice || 0).toFixed(2)}`, x + labelWidth - 2, y + labelHeight - 4, { align: 'right' });
     
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${product.code}`;
-    try {
-      const qrBase64 = await loadImage(qrUrl);
-      if (qrBase64) doc.addImage(qrBase64, 'PNG', x + 2, y + 12, 15, 15);
-    } catch(e) {}
-    
     doc.setTextColor(0);
   }
 
-  doc.save(`etiquetas-${product.name}.pdf`);
+  doc.save(`etiquetas-6x3-${product.name}.pdf`);
 };
 
 export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
@@ -102,7 +111,6 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   const width = 80;
   let y = 10;
 
-  // LOGO DA EMPRESA
   if (settings.logoUrl) {
     try {
       const logo = await loadImage(settings.logoUrl);
@@ -117,7 +125,7 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
-  doc.text(settings.companyName || "Vibrant POS", width / 2, y, { align: 'center' });
+  doc.text(settings.companyName || "Tenda JL", width / 2, y, { align: 'center' });
   y += 6;
   doc.setFontSize(8);
   doc.text(`CUPOM DE VENDA`, width / 2, y, { align: 'center' });
@@ -192,7 +200,6 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   doc.text(`PAGAMENTO: ${(sale.paymentMethod || '').toUpperCase()}`, 5, y);
   y += 6;
 
-  // DETALHAMENTO DE PARCELAS (CREDIÁRIO)
   if (sale.installments && sale.installments.length > 0) {
     doc.setFont('helvetica', 'bold');
     doc.text('DETALHE DO PARCELAMENTO:', 5, y);
@@ -207,7 +214,6 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
     y += 6;
   }
 
-  // PIX QR CODE - Exibir se existir no settings e se for PIX ou CREDIÁRIO
   if (settings.pixQrUrl && (sale.paymentMethod === 'pix' || sale.paymentMethod === 'crediario')) {
     try {
       const pix = await loadImage(settings.pixQrUrl);
@@ -217,7 +223,6 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
         doc.setFont('helvetica', 'bold');
         doc.text('PAGAMENTO VIA PIX', width / 2, y, { align: 'center' });
         y += 4;
-        // Centraliza a imagem do QR Code
         doc.addImage(pix, 'PNG', (width - 40) / 2, y, 40, 40);
         y += 45;
       }
@@ -231,5 +236,5 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   doc.setFontSize(7);
   doc.text('Obrigado pela preferência!', width / 2, y, { align: 'center' });
 
-  doc.save(`vibrant-pos-${(sale.id || '').substring(0, 8)}.pdf`);
+  doc.save(`tenda-jl-cupom-${(sale.id || '').substring(0, 8)}.pdf`);
 };
