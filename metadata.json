@@ -1,0 +1,7 @@
+{
+  "name": "VibrantPOS - Frente de Caixa Inteligente",
+  "description": "Uma aplicação moderna de PDV com scanner de QR Code, gestão de estoque, clientes e emissão de comprovantes em PDF.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
