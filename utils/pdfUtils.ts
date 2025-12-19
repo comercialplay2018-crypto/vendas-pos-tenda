@@ -41,36 +41,10 @@ const loadImage = (url: string | undefined): Promise<string> => {
   });
 };
 
-export const generateLabelPDF = async (product: Product, quantity: number) => {
-  const doc = new jsPDF('p', 'mm', 'a4');
-  
-  // Configurações para etiquetas 6x3cm (60x30mm)
-  const labelWidth = 60;
-  const labelHeight = 30;
-  const marginX = 10;
-  const marginY = 13;
-  const spacingX = 2;
-  const spacingY = 1;
-  
-  const cols = 3; // 60 * 3 = 180mm + espaços cabe no A4 (210mm)
-  const rows = 9; // 30 * 9 = 270mm + espaços cabe no A4 (297mm)
-  const perPage = cols * rows;
-  
-  for (let i = 0; i < quantity; i++) {
-    const pageIndex = Math.floor(i / perPage);
-    const itemOnPageIndex = i % perPage;
-    
-    if (i > 0 && itemOnPageIndex === 0) doc.addPage();
-
-    const col = itemOnPageIndex % cols;
-    const row = Math.floor(itemOnPageIndex / cols);
-
-    const x = marginX + col * (labelWidth + spacingX);
-    const y = marginY + row * (labelHeight + spacingY);
-
-    // Borda da etiqueta (opcional, mas ajuda no corte)
-    doc.setDrawColor(230);
-    doc.rect(x, y, labelWidth, labelHeight);
+const drawSingleLabel = async (doc: jsPDF, product: Product, x: number, y: number, width: number, height: number) => {
+    // Borda da etiqueta (ajuda no corte)
+    doc.setDrawColor(220);
+    doc.rect(x, y, width, height);
 
     // QR Code no canto esquerdo
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${product.code}`;
@@ -79,11 +53,11 @@ export const generateLabelPDF = async (product: Product, quantity: number) => {
       if (qrBase64) doc.addImage(qrBase64, 'PNG', x + 2, y + 5, 18, 18);
     } catch(e) {}
 
-    // Nome do Produto (Centro/Direita)
+    // Nome do Produto
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
-    doc.setTextColor(50, 50, 50);
-    const splitName = doc.splitTextToSize(product.name.toUpperCase(), labelWidth - 24);
+    doc.setTextColor(40, 40, 40);
+    const splitName = doc.splitTextToSize(product.name.toUpperCase(), width - 24);
     doc.text(splitName, x + 22, y + 7);
     
     // Código do Produto
@@ -94,20 +68,60 @@ export const generateLabelPDF = async (product: Product, quantity: number) => {
     // Preço de Venda em destaque
     doc.setFontSize(14);
     doc.setTextColor(0, 0, 0);
-    doc.text(`R$ ${(product.sellPrice || 0).toFixed(2)}`, x + labelWidth - 2, y + labelHeight - 4, { align: 'right' });
-    
-    doc.setTextColor(0);
-  }
+    doc.text(`R$ ${(product.sellPrice || 0).toFixed(2)}`, x + width - 2, y + height - 4, { align: 'right' });
+};
 
-  doc.save(`etiquetas-6x3-${product.name}.pdf`);
+export const generateLabelPDF = async (product: Product, quantity: number) => {
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const labelWidth = 60;
+  const labelHeight = 30;
+  const marginX = 10;
+  const marginY = 13;
+  const spacingX = 2;
+  const spacingY = 1;
+  const cols = 3; 
+  const rows = 9; 
+  const perPage = cols * rows;
+  
+  for (let i = 0; i < quantity; i++) {
+    const itemOnPageIndex = i % perPage;
+    if (i > 0 && itemOnPageIndex === 0) doc.addPage();
+    const col = itemOnPageIndex % cols;
+    const row = Math.floor(itemOnPageIndex / cols);
+    const x = marginX + col * (labelWidth + spacingX);
+    const y = marginY + row * (labelHeight + spacingY);
+    await drawSingleLabel(doc, product, x, y, labelWidth, labelHeight);
+  }
+  doc.save(`etiquetas-${product.name}.pdf`);
+};
+
+export const generateAllLabelsPDF = async (products: Product[]) => {
+  if (products.length === 0) return;
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const labelWidth = 60;
+  const labelHeight = 30;
+  const marginX = 10;
+  const marginY = 13;
+  const spacingX = 2;
+  const spacingY = 1;
+  const cols = 3; 
+  const rows = 9; 
+  const perPage = cols * rows;
+
+  for (let i = 0; i < products.length; i++) {
+    const itemOnPageIndex = i % perPage;
+    if (i > 0 && itemOnPageIndex === 0) doc.addPage();
+    const col = itemOnPageIndex % cols;
+    const row = Math.floor(itemOnPageIndex / cols);
+    const x = marginX + col * (labelWidth + spacingX);
+    const y = marginY + row * (labelHeight + spacingY);
+    await drawSingleLabel(doc, products[i], x, y, labelWidth, labelHeight);
+  }
+  doc.save(`todas-etiquetas-tenda-jl.pdf`);
 };
 
 export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
-  const doc = new jsPDF({
-    unit: 'mm',
-    format: [80, 500] 
-  });
-
+  const doc = new jsPDF({ unit: 'mm', format: [80, 500] });
   const width = 80;
   let y = 10;
 
@@ -118,9 +132,7 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
         doc.addImage(logo, 'PNG', (width - 25) / 2, y, 25, 25);
         y += 28;
       }
-    } catch (e) {
-      console.warn("Falha ao carregar logo no PDF");
-    }
+    } catch (e) {}
   }
 
   doc.setFont('helvetica', 'bold');
@@ -161,7 +173,6 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
     const unitPrice = item.price || 0;
     const itemDiscount = item.discount || 0;
     const lineTotal = (unitPrice - itemDiscount) * item.quantity;
-
     doc.setFont('helvetica', 'bold');
     doc.text(item.name.substring(0, 30), 5, y);
     y += 4;
@@ -226,15 +237,12 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
         doc.addImage(pix, 'PNG', (width - 40) / 2, y, 40, 40);
         y += 45;
       }
-    } catch (e) {
-      console.warn("Falha ao carregar PIX no PDF");
-    }
+    } catch (e) {}
   }
 
   y += 6;
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7);
   doc.text('Obrigado pela preferência!', width / 2, y, { align: 'center' });
-
-  doc.save(`tenda-jl-cupom-${(sale.id || '').substring(0, 8)}.pdf`);
+  doc.save(`cupom-${(sale.id || '').substring(0, 8)}.pdf`);
 };
