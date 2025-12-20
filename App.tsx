@@ -323,7 +323,14 @@ const App: React.FC = () => {
                           <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">{item.product.code}</p>
                           <h4 className="font-black text-gray-800 text-xl leading-tight">{item.product.name}</h4>
                         </div>
-                        <button onClick={() => setCart(prev => prev.filter(i => i.product.id !== item.product.id))} className="p-3 text-gray-300 hover:text-rose-500 transition-colors bg-gray-50 rounded-xl"><X size={22}/></button>
+                        {/* BOTÃO DE EXCLUIR ITEM DO CARRINHO - AGORA MAIS VISÍVEL COM ÍCONE DE LIXEIRA */}
+                        <button 
+                          onClick={() => setCart(prev => prev.filter(i => i.product.id !== item.product.id))} 
+                          className="p-3 text-rose-500 bg-rose-50 hover:bg-rose-100 transition-colors rounded-xl"
+                          title="Remover do carrinho"
+                        >
+                          <Trash2 size={22}/>
+                        </button>
                       </div>
                       <div className="grid grid-cols-2 gap-6">
                         <div className="space-y-2">
@@ -385,11 +392,11 @@ const App: React.FC = () => {
                     </div>
                   )}
 
-                  {/* OPÇÃO DE PARCELAMENTO PARA CREDIÁRIO */}
+                  {/* OPÇÃO DE PARCELAMENTO PARA CREDIÁRIO - CORRIGIDO E GARANTIDO */}
                   {paymentMethod === 'crediario' && (
                     <div className="space-y-4 animate-in slide-in-from-top-4 duration-300">
                       <div className="space-y-2">
-                        <label className="text-[11px] font-black text-orange-600 uppercase ml-2">Parcelas (Mensais)</label>
+                        <label className="text-[11px] font-black text-orange-600 uppercase ml-2">Escolher Parcelas</label>
                         <select className="w-full p-5 bg-orange-50 border-2 border-orange-200 rounded-2xl font-black text-xl outline-none focus:border-orange-600 text-orange-700" value={installmentCount} onChange={(e) => setInstallmentCount(Number(e.target.value))}>
                           {[...Array(12)].map((_, i) => (
                             <option key={i + 1} value={i + 1}>{i + 1}x de R$ {(calculateTotal() / (i + 1)).toFixed(2)}</option>
@@ -397,7 +404,7 @@ const App: React.FC = () => {
                         </select>
                       </div>
                       <div className="bg-orange-100/50 p-4 rounded-2xl border border-orange-200 space-y-2">
-                        <p className="text-[10px] font-black text-orange-600 uppercase flex items-center gap-2"><Calendar size={12}/> Projeção de Vencimentos</p>
+                        <p className="text-[10px] font-black text-orange-600 uppercase flex items-center gap-2"><Calendar size={12}/> Vencimentos Projetados</p>
                         <div className="max-h-32 overflow-y-auto space-y-1 pr-2 scrollbar-thin">
                           {generateInstallments(calculateTotal(), installmentCount).map((inst) => (
                             <div key={inst.number} className="flex justify-between items-center text-[10px] font-bold text-gray-600 border-b border-orange-200/50 pb-1">

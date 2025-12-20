@@ -114,20 +114,20 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   const width = 80;
   let y = 10;
 
-  // CABEÇALHO COM LOGO (REMOVIDO NOMES ESTRANHOS)
+  // CABEÇALHO APENAS COM LOGO E NOME DA TENDA JL
   if (settings.logoUrl) {
     try {
       const logo = await loadImage(settings.logoUrl);
       if (logo) {
-        doc.addImage(logo, 'PNG', (width - 30) / 2, y, 30, 30);
-        y += 35;
+        doc.addImage(logo, 'PNG', (width - 35) / 2, y, 35, 35);
+        y += 40;
       }
     } catch (e) {}
   }
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
-  doc.text(settings.companyName || "Tenda JL", width / 2, y, { align: 'center' });
+  doc.text(settings.companyName || "TENDA JL", width / 2, y, { align: 'center' });
   y += 6;
   doc.setFontSize(8);
   doc.text(`COMPROVANTE DE VENDA`, width / 2, y, { align: 'center' });
@@ -135,7 +135,7 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
 
   const date = new Date(sale.timestamp);
   doc.setFont('helvetica', 'normal');
-  doc.text(`RECIBO: #${(sale.id || '').substring(0, 8)}`, 5, y);
+  doc.text(`PEDIDO: #${(sale.id || '').substring(0, 8)}`, 5, y);
   doc.text(date.toLocaleDateString(), width - 5, y, { align: 'right' });
   y += 4;
   doc.text(`VENDEDOR: ${sale.sellerName}`, 5, y);
@@ -166,7 +166,7 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
     y += 4;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
-    doc.text(`${item.quantity} un x R$ ${unitPrice.toFixed(2)}`, 7, y);
+    doc.text(`${item.quantity} x R$ ${unitPrice.toFixed(2)}`, 7, y);
     doc.setFontSize(8);
     doc.text(`R$ ${lineTotal.toFixed(2)}`, width - 5, y, { align: 'right' });
     y += 5;
@@ -182,7 +182,7 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   y += 5;
 
   if (sale.fee) {
-    doc.text('TAXA (CREDIÁRIO):', 5, y);
+    doc.text('TAXA ADICIONAL:', 5, y);
     doc.text(`R$ ${sale.fee.toFixed(2)}`, width - 5, y, { align: 'right' });
     y += 5;
   }
@@ -193,40 +193,43 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   doc.text(`R$ ${(sale.total || 0).toFixed(2)}`, width - 5, y, { align: 'right' });
   y += 8;
 
-  doc.setFontSize(8);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text(`FORMA DE PAGTO: ${(sale.paymentMethod || '').toUpperCase()}`, 5, y);
+  doc.text(`FORMA PGTO: ${(sale.paymentMethod || '').toUpperCase()}`, 5, y);
   y += 6;
 
-  // DETALHES DO CREDIÁRIO NO COMPROVANTE
+  // EXIBIÇÃO DAS PARCELAS DO CREDIÁRIO NO COMPROVANTE
   if (sale.installments && sale.installments.length > 0) {
     doc.line(5, y, width - 5, y);
     y += 5;
-    doc.text('VENCIMENTOS DO CREDIÁRIO:', 5, y);
-    y += 4;
+    doc.setFont('helvetica', 'bold');
+    doc.text('CRONOGRAMA DE VENCIMENTOS:', 5, y);
+    y += 5;
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
     sale.installments.forEach(inst => {
       const d = new Date(inst.dueDate).toLocaleDateString();
-      doc.text(`Parc. ${inst.number}: ${d}`, 7, y);
+      doc.text(`Parc. ${inst.number} - Venc: ${d}`, 7, y);
       doc.text(`R$ ${inst.value.toFixed(2)}`, width - 5, y, { align: 'right' });
       y += 4;
     });
-    y += 4;
+    y += 6;
   }
 
-  // IMAGEM DO PIX NO RODAPÉ (INCLUÍDO PARA CREDIÁRIO TAMBÉM CONFORME PEDIDO)
+  // QR CODE DO PIX NO RODAPÉ (PARA PIX OU CREDIÁRIO)
   if (settings.pixQrUrl && (sale.paymentMethod === 'pix' || sale.paymentMethod === 'crediario')) {
     try {
       const pix = await loadImage(settings.pixQrUrl);
       if (pix) {
-        y += 5;
+        y += 2;
         doc.line(5, y, width - 5, y);
-        y += 8;
+        y += 6;
         doc.setFont('helvetica', 'bold');
-        doc.text('PAGUE VIA PIX', width / 2, y, { align: 'center' });
+        doc.setFontSize(10);
+        doc.text('PAGUE COM PIX AQUI', width / 2, y, { align: 'center' });
         y += 5;
-        doc.addImage(pix, 'PNG', (width - 45) / 2, y, 45, 45);
-        y += 50;
+        doc.addImage(pix, 'PNG', (width - 40) / 2, y, 40, 40);
+        y += 45;
       }
     } catch (e) {}
   }
@@ -234,6 +237,6 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   y += 10;
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7);
-  doc.text('TENDA JL - AGRADECEMOS A PREFERÊNCIA!', width / 2, y, { align: 'center' });
-  doc.save(`venda-${(sale.id || '').substring(0, 8)}.pdf`);
+  doc.text('OBRIGADO PELA PREFERÊNCIA!', width / 2, y, { align: 'center' });
+  doc.save(`recibo-tenda-jl-${(sale.id || '').substring(0, 8)}.pdf`);
 };

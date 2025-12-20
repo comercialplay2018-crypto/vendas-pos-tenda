@@ -108,7 +108,7 @@ export const dbService = {
   },
   onSettingsChange(callback: (settings: Settings) => void) {
     return onValue(ref(db, 'settings'), (snapshot) => {
-      callback(snapshot.exists() ? snapshot.val() : { companyName: 'Vibrant POS' });
+      callback(snapshot.exists() ? snapshot.val() : { companyName: 'Tenda JL' });
     });
   },
 
