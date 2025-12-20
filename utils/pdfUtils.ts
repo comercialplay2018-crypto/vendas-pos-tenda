@@ -114,7 +114,6 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   const width = 80;
   let y = 10;
 
-  // CABEÇALHO APENAS COM LOGO E NOME DA TENDA JL
   if (settings.logoUrl) {
     try {
       const logo = await loadImage(settings.logoUrl);
@@ -137,7 +136,6 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   doc.setFont('helvetica', 'normal');
   doc.text(`PEDIDO: #${(sale.id || '').substring(0, 8)}`, 5, y);
   
-  // Incluindo a hora no comprovante
   const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   doc.text(`${date.toLocaleDateString()} ${timeStr}`, width - 5, y, { align: 'right' });
   y += 4;
@@ -187,7 +185,6 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   doc.text(`R$ ${(sale.subtotal + totalDiscount).toFixed(2)}`, width - 5, y, { align: 'right' });
   y += 5;
 
-  // Exibindo desconto se aplicado
   if (totalDiscount > 0) {
     doc.setFont('helvetica', 'bold');
     doc.text('DESCONTOS:', 5, y);
@@ -208,7 +205,6 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   doc.text(`R$ ${(sale.total || 0).toFixed(2)}`, width - 5, y, { align: 'right' });
   y += 8;
 
-  // Exibindo valor pago e troco se for em dinheiro
   if (sale.paymentMethod === 'dinheiro') {
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
@@ -226,7 +222,6 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   doc.text(`FORMA PGTO: ${(sale.paymentMethod || '').toUpperCase()}`, 5, y);
   y += 6;
 
-  // EXIBIÇÃO DAS PARCELAS DO CREDIÁRIO NO COMPROVANTE
   if (sale.installments && sale.installments.length > 0) {
     doc.line(5, y, width - 5, y);
     y += 5;
@@ -244,7 +239,6 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
     y += 6;
   }
 
-  // QR CODE DO PIX NO RODAPÉ (PARA PIX OU CREDIÁRIO)
   if (settings.pixQrUrl && (sale.paymentMethod === 'pix' || sale.paymentMethod === 'crediario')) {
     try {
       const pix = await loadImage(settings.pixQrUrl);
@@ -267,4 +261,67 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   doc.setFontSize(7);
   doc.text('OBRIGADO PELA PREFERÊNCIA!', width / 2, y, { align: 'center' });
   doc.save(`recibo-tenda-jl-${(sale.id || '').substring(0, 8)}.pdf`);
+};
+
+export const generateLoginCardPDF = async (user: any, settings: Settings) => {
+  const doc = new jsPDF({ unit: 'mm', format: [100, 150] });
+  const width = 100;
+  const height = 150;
+  
+  // Fundo Colorido (Gradient Simulado)
+  doc.setFillColor(234, 88, 12); // Orange 600
+  doc.rect(0, 0, width, height, 'F');
+  
+  // Card Central Branco
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(10, 10, 80, 130, 10, 10, 'F');
+  
+  let y = 25;
+  
+  // Logo
+  if (settings.logoUrl) {
+    try {
+      const logo = await loadImage(settings.logoUrl);
+      if (logo) {
+        doc.addImage(logo, 'PNG', (width - 25) / 2, y, 25, 25);
+        y += 30;
+      }
+    } catch (e) { y += 10; }
+  } else {
+    y += 10;
+  }
+  
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(50, 50, 50);
+  doc.text(settings.companyName.toUpperCase(), width/2, y, { align: 'center' });
+  y += 10;
+  
+  doc.setFontSize(12);
+  doc.text('CRACHÁ DE ACESSO', width/2, y, { align: 'center' });
+  y += 15;
+  
+  // QR Code de Acesso
+  // Formato: TENDA-LOGIN|USERNAME|PIN
+  const loginToken = `TENDA-LOGIN|${user.name}|${user.pin}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(loginToken)}`;
+  
+  try {
+    const qr = await loadImage(qrUrl);
+    if (qr) {
+      doc.addImage(qr, 'PNG', (width - 45) / 2, y, 45, 45);
+      y += 55;
+    }
+  } catch (e) { y += 10; }
+  
+  doc.setFontSize(18);
+  doc.setTextColor(234, 88, 12);
+  doc.text(user.name.toUpperCase(), width/2, y, { align: 'center' });
+  y += 8;
+  
+  doc.setFontSize(10);
+  doc.setTextColor(150, 150, 150);
+  doc.text(user.role.toUpperCase(), width/2, y, { align: 'center' });
+  
+  doc.save(`cracha-${user.name.toLowerCase()}.pdf`);
 };

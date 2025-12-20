@@ -4,15 +4,16 @@ import {
   ShoppingCart, Package, Users, History, Settings as SettingsIcon, 
   LogOut, Plus, Search, Trash2, Edit3, Camera, Download, X, Loader2, 
   ShoppingBag, Printer, TrendingUp, Filter, BarChart3, Tent, Sparkles, Calendar,
-  CreditCard, CheckCircle2, Clock, Ban, ShieldCheck, ShieldAlert, UserPlus, Fingerprint
+  CreditCard, CheckCircle2, Clock, Ban, ShieldCheck, ShieldAlert, UserPlus, Fingerprint,
+  QrCode, ScanLine
 } from 'lucide-react';
 import { dbService, UserWithPin } from './services/dbService';
 import { Product, Customer, Sale, User, Settings as SettingsType, PaymentMethod, Installment } from './types';
 import { Scanner } from './components/Scanner';
-import { generateLabelPDF, generateReceiptPDF, generateAllLabelsPDF } from './utils/pdfUtils';
+import { generateLabelPDF, generateReceiptPDF, generateAllLabelsPDF, generateLoginCardPDF } from './utils/pdfUtils';
 import { GoogleGenAI } from "@google/genai";
 
-const APP_VERSION = "3.2.1-PRODUCTION";
+const APP_VERSION = "3.3.1-PRODUCTION";
 const ADMIN_QR_KEY = "TENDA-JL-ADMIN-2025"; 
 
 // LOGIN MESTRE PARA EMERGÊNCIA
@@ -48,7 +49,7 @@ const App: React.FC = () => {
   const [settings, setSettings] = useState<SettingsType>({ companyName: 'Vendas Tenda JL' });
   
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [scannerMode, setScannerMode] = useState<'product' | 'admin'>('product');
+  const [scannerMode, setScannerMode] = useState<'product' | 'admin' | 'login'>('product');
   const [pendingVoidSaleId, setPendingVoidSaleId] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -138,6 +139,28 @@ const App: React.FC = () => {
         setPendingVoidSaleId(null);
       } else {
         alert("Acesso Negado.");
+      }
+    } else if (scannerMode === 'login') {
+      if (code.startsWith('TENDA-LOGIN|')) {
+        const parts = code.split('|');
+        const username = parts[1];
+        const pin = parts[2];
+        
+        if (username.toUpperCase() === MASTER_ADMIN_USER && pin === MASTER_ADMIN_PIN) {
+          setCurrentUser({ id: 'master', name: 'SUPER ADMIN', role: 'admin' });
+          setIsScannerOpen(false);
+          return;
+        }
+
+        const user = team.find(u => u.name.toLowerCase() === username.toLowerCase() && u.pin === pin);
+        if (user) {
+          setCurrentUser({ id: user.id, name: user.name, role: user.role });
+          setIsScannerOpen(false);
+        } else {
+          alert("Acesso Inválido ou Usuário Removido.");
+        }
+      } else {
+        alert("Este não é um QR Code de acesso válido.");
       }
     }
   };
@@ -257,7 +280,13 @@ const App: React.FC = () => {
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-600 via-rose-500 to-amber-500 flex items-center justify-center p-4">
-        <div className="bg-white p-10 rounded-[3rem] shadow-2xl w-full max-md border-t-[12px] border-orange-600 relative">
+        <div className="bg-white p-10 rounded-[3rem] shadow-2xl w-full max-w-md border-t-[12px] border-orange-600 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4">
+            <button onClick={() => { setScannerMode('login'); setIsScannerOpen(true); }} className="p-4 bg-orange-50 text-orange-600 rounded-2xl hover:bg-orange-600 hover:text-white transition-all shadow-sm">
+              <ScanLine size={24} />
+            </button>
+          </div>
+          
           <div className="flex justify-center mb-10">
             {settings.logoUrl ? (
                <img src={settings.logoUrl} alt="Logo" className="w-24 h-24 object-contain shadow-2xl rounded-3xl" />
@@ -269,6 +298,7 @@ const App: React.FC = () => {
           </div>
           <h1 className="text-4xl font-black text-center mb-2 text-gray-800 tracking-tighter uppercase">{settings.companyName || "Tenda JL"}</h1>
           <p className="text-center text-gray-400 text-[10px] font-black uppercase tracking-widest mb-10">PDV {APP_VERSION}</p>
+          
           <form onSubmit={handleLoginSubmit} className="space-y-6">
             <input type="text" placeholder="USUÁRIO" value={loginData.username} onChange={(e) => setLoginData({...loginData, username: e.target.value})} className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-2xl outline-none font-black focus:border-orange-500 transition-all text-center" required />
             <input type="password" placeholder="PIN" value={loginData.pin} onChange={(e) => setLoginData({...loginData, pin: e.target.value})} className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-2xl outline-none font-black focus:border-orange-500 transition-all text-center" required />
@@ -276,7 +306,23 @@ const App: React.FC = () => {
               {isLoggingIn ? <Loader2 className="animate-spin mx-auto" size={28} /> : 'ENTRAR'}
             </button>
           </form>
+
+          <div className="mt-8 flex flex-col items-center gap-4">
+            <div className="h-px w-24 bg-gray-100"></div>
+            <button onClick={() => { setScannerMode('login'); setIsScannerOpen(true); }} className="flex items-center gap-3 text-orange-600 font-black text-xs uppercase tracking-widest py-3 px-6 bg-orange-50 rounded-full hover:scale-105 transition-all">
+              <QrCode size={18}/> Acesso por Crachá
+            </button>
+          </div>
         </div>
+
+        {/* Scanner disponível na tela de login */}
+        {isScannerOpen && (
+          <Scanner 
+            onScan={handleScannerScan} 
+            onClose={() => { setIsScannerOpen(false); setScannerMode('product'); }} 
+            mode={scannerMode}
+          />
+        )}
       </div>
     );
   }
@@ -486,6 +532,7 @@ const App: React.FC = () => {
             isModalOpen={isUserModalOpen}
             setIsModalOpen={setIsUserModalOpen}
             editingUser={editingUser}
+            settings={settings}
           />
         )}
 
@@ -541,7 +588,7 @@ const MobileNavIcon = ({ icon, label, active, onClick }: any) => (
   </button>
 );
 
-const TeamView = ({ team, onSave, onDelete, onEdit, onAddNew, isModalOpen, setIsModalOpen, editingUser }: any) => {
+const TeamView = ({ team, onSave, onDelete, onEdit, onAddNew, isModalOpen, setIsModalOpen, editingUser, settings }: any) => {
   const [formData, setFormData] = useState({ name: '', pin: '', role: 'vendedor' as 'vendedor' | 'admin' });
   useEffect(() => {
     if (editingUser) setFormData({ name: editingUser.name, pin: editingUser.pin, role: editingUser.role });
@@ -562,18 +609,27 @@ const TeamView = ({ team, onSave, onDelete, onEdit, onAddNew, isModalOpen, setIs
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {team.map((u: any) => (
-          <div key={u.id} className="bg-white p-6 rounded-[2.5rem] shadow-lg border-2 border-gray-50 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center font-black text-xl">{u.name[0].toUpperCase()}</div>
-              <div>
-                <h3 className="font-black text-gray-800">{u.name}</h3>
-                <span className="text-[9px] font-black uppercase text-gray-400 px-2 py-0.5 bg-gray-50 border rounded-lg">{u.role}</span>
+          <div key={u.id} className="bg-white p-6 rounded-[2.5rem] shadow-lg border-2 border-gray-50 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center font-black text-xl">{u.name[0].toUpperCase()}</div>
+                <div>
+                  <h3 className="font-black text-gray-800">{u.name}</h3>
+                  <span className="text-[9px] font-black uppercase text-gray-400 px-2 py-0.5 bg-gray-50 border rounded-lg">{u.role}</span>
+                </div>
+              </div>
+              <div className="flex gap-1">
+                <button onClick={() => onEdit(u)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"><Edit3 size={18}/></button>
+                <button onClick={() => confirm('Remover acesso?') && onDelete(u.id)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg"><Trash2 size={18}/></button>
               </div>
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => onEdit(u)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"><Edit3 size={18}/></button>
-              <button onClick={() => confirm('Remover acesso?') && onDelete(u.id)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg"><Trash2 size={18}/></button>
-            </div>
+            
+            <button 
+              onClick={() => generateLoginCardPDF(u, settings)}
+              className="w-full py-3 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center gap-3 text-gray-500 font-black text-[10px] uppercase hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-all"
+            >
+              <QrCode size={18}/> Gerar Crachá de Acesso
+            </button>
           </div>
         ))}
       </div>
