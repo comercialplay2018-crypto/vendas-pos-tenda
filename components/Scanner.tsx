@@ -19,15 +19,20 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'produ
   const isLogin = mode === 'login';
 
   useEffect(() => {
-    // Usamos um timeout curto para garantir que o React renderizou o div "reader" no DOM
+    // Aumentamos levemente o delay para garantir que o contêiner DOM esteja 100% montado no DOM
     const initTimer = setTimeout(() => {
       const startScanner = async () => {
         try {
+          // Destrói instância anterior se existir
+          if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+            await html5QrCodeRef.current.stop();
+          }
+
           const html5QrCode = new Html5Qrcode(scannerId);
           html5QrCodeRef.current = html5QrCode;
 
           const config = { 
-            fps: 15, 
+            fps: 20, // Aumentado FPS para maior fluidez
             qrbox: { width: 250, height: 250 },
             aspectRatio: 1.0 
           };
@@ -38,23 +43,28 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'produ
             (decodedText) => {
               onScan(decodedText);
             },
-            () => {}
+            () => { /* Ignora erros de frame individual */ }
           );
           setIsInitializing(false);
         } catch (err: any) {
           console.error("Erro ao iniciar câmera:", err);
-          setError("Não foi possível acessar a câmera. Verifique as permissões.");
+          setError("Não foi possível acessar a câmera. Verifique se as permissões foram concedidas.");
           setIsInitializing(false);
         }
       };
 
       startScanner();
-    }, 100);
+    }, 250); // Delay mais conservador para evitar race condition de DOM
 
     return () => {
       clearTimeout(initTimer);
-      if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-        html5QrCodeRef.current.stop().catch(console.warn);
+      if (html5QrCodeRef.current) {
+        if (html5QrCodeRef.current.isScanning) {
+          html5QrCodeRef.current.stop().catch(console.warn);
+        }
+        // Tentamos limpar o conteúdo do reader para liberar recursos
+        const readerElement = document.getElementById(scannerId);
+        if (readerElement) readerElement.innerHTML = "";
       }
     };
   }, []);
@@ -123,7 +133,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'produ
           {isInitializing && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black gap-4">
               <RefreshCw className="text-orange-500 animate-spin" size={48} />
-              <p className="text-white font-black text-xs uppercase tracking-widest">Ativando Câmera...</p>
+              <p className="text-white font-black text-xs uppercase tracking-widest">Iniciando Câmera...</p>
             </div>
           )}
 

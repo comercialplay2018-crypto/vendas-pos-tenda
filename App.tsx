@@ -13,7 +13,7 @@ import { Scanner } from './components/Scanner';
 import { generateLabelPDF, generateReceiptPDF, generateAllLabelsPDF, generateLoginCardPDF } from './utils/pdfUtils';
 import { GoogleGenAI } from "@google/genai";
 
-const APP_VERSION = "3.3.1-PRODUCTION";
+const APP_VERSION = "3.3.2-PRODUCTION";
 const ADMIN_QR_KEY = "TENDA-JL-ADMIN-2025"; 
 
 // LOGIN MESTRE PARA EMERGÊNCIA
@@ -408,7 +408,14 @@ const App: React.FC = () => {
                         </div>
                         <div className="space-y-2">
                           <label className="text-[10px] font-black text-gray-400 uppercase">Desconto R$</label>
-                          <input type="number" className="w-full p-4 bg-gray-50 border rounded-2xl font-black text-lg outline-none focus:border-orange-500" value={item.discount || ''} placeholder="0,00" onChange={(e) => updateCartItem(item.product.id, { discount: parseFloat(e.target.value) || 0 })} />
+                          <input 
+                            type="number" 
+                            step="0.01"
+                            className="w-full p-4 bg-gray-50 border rounded-2xl font-black text-lg outline-none focus:border-orange-500" 
+                            value={item.discount || ''} 
+                            placeholder="0,00" 
+                            onChange={(e) => updateCartItem(item.product.id, { discount: parseFloat(e.target.value) || 0 })} 
+                          />
                         </div>
                       </div>
                     </div>
