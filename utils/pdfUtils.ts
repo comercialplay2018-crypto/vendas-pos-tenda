@@ -136,7 +136,10 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   const date = new Date(sale.timestamp);
   doc.setFont('helvetica', 'normal');
   doc.text(`PEDIDO: #${(sale.id || '').substring(0, 8)}`, 5, y);
-  doc.text(date.toLocaleDateString(), width - 5, y, { align: 'right' });
+  
+  // Incluindo a hora no comprovante
+  const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  doc.text(`${date.toLocaleDateString()} ${timeStr}`, width - 5, y, { align: 'right' });
   y += 4;
   doc.text(`VENDEDOR: ${sale.sellerName}`, 5, y);
   y += 4;
@@ -157,10 +160,13 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   y += 5;
 
   doc.setFont('helvetica', 'normal');
+  let totalDiscount = 0;
   sale.items.forEach(item => {
     const unitPrice = item.price || 0;
     const itemDiscount = item.discount || 0;
+    totalDiscount += itemDiscount * item.quantity;
     const lineTotal = (unitPrice - itemDiscount) * item.quantity;
+    
     doc.setFont('helvetica', 'bold');
     doc.text(item.name.toUpperCase().substring(0, 35), 5, y);
     y += 4;
@@ -178,8 +184,17 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   
   doc.setFontSize(9);
   doc.text('SUBTOTAL:', 5, y);
-  doc.text(`R$ ${(sale.subtotal || 0).toFixed(2)}`, width - 5, y, { align: 'right' });
+  doc.text(`R$ ${(sale.subtotal + totalDiscount).toFixed(2)}`, width - 5, y, { align: 'right' });
   y += 5;
+
+  // Exibindo desconto se aplicado
+  if (totalDiscount > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.text('DESCONTOS:', 5, y);
+    doc.text(`- R$ ${totalDiscount.toFixed(2)}`, width - 5, y, { align: 'right' });
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+  }
 
   if (sale.fee) {
     doc.text('TAXA ADICIONAL:', 5, y);
@@ -192,6 +207,19 @@ export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
   doc.text('TOTAL GERAL:', 5, y);
   doc.text(`R$ ${(sale.total || 0).toFixed(2)}`, width - 5, y, { align: 'right' });
   y += 8;
+
+  // Exibindo valor pago e troco se for em dinheiro
+  if (sale.paymentMethod === 'dinheiro') {
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text('VALOR RECEBIDO:', 5, y);
+    doc.text(`R$ ${(sale.amountPaid || 0).toFixed(2)}`, width - 5, y, { align: 'right' });
+    y += 5;
+    doc.setFont('helvetica', 'bold');
+    doc.text('TROCO:', 5, y);
+    doc.text(`R$ ${(sale.change || 0).toFixed(2)}`, width - 5, y, { align: 'right' });
+    y += 8;
+  }
 
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');

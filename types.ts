@@ -18,6 +18,8 @@ export interface Installment {
   number: number;
   value: number;
   dueDate: string;
+  status?: 'pendente' | 'pago';
+  paidAt?: number;
 }
 
 export type PaymentMethod = 'pix' | 'dinheiro' | 'debito' | 'credito' | 'crediario';

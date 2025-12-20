@@ -1,7 +1,7 @@
 
 import { ref, set, push, get, update, remove, onValue } from "firebase/database";
 import { db } from "../firebase";
-import { Product, Customer, Sale, Settings, User } from "../types";
+import { Product, Customer, Sale, Settings, User, Installment } from "../types";
 
 export interface UserWithPin extends User {
   pin: string;
@@ -59,6 +59,7 @@ export const dbService = {
       const cleanData = {
         ...sale,
         id: saleId,
+        status: 'finalizada',
         timestamp: Date.now()
       };
       
@@ -80,14 +81,33 @@ export const dbService = {
     }
   },
 
-  async deleteSale(saleId: string) {
+  async voidSale(saleId: string) {
     if (!saleId) return;
     try {
       const saleRef = ref(db, `sales/${saleId}`);
-      await remove(saleRef);
-      return true;
+      const snapshot = await get(saleRef);
+      
+      if (snapshot.exists()) {
+        const saleData = snapshot.val();
+        if (saleData.status === 'cancelada') return;
+
+        if (saleData.items && Array.isArray(saleData.items)) {
+          for (const item of saleData.items) {
+            if (!item.productId) continue;
+            const prodRef = ref(db, `products/${item.productId}`);
+            const prodSnap = await get(prodRef);
+            if (prodSnap.exists()) {
+              const currentQty = Number(prodSnap.val().quantity) || 0;
+              await update(prodRef, { quantity: currentQty + item.quantity });
+            }
+          }
+        }
+
+        await update(saleRef, { status: 'cancelada' });
+        return true;
+      }
     } catch (error) {
-      console.error("Erro ao excluir venda:", error);
+      console.error("Erro ao cancelar venda:", error);
       throw error;
     }
   },
@@ -102,6 +122,15 @@ export const dbService = {
     });
   },
 
+  async updateSaleInstallments(saleId: string, installments: Installment[]) {
+    try {
+      await update(ref(db, `sales/${saleId}`), { installments });
+    } catch (error) {
+      console.error("Erro ao atualizar parcelas:", error);
+      throw error;
+    }
+  },
+
   // Settings
   async saveSettings(settings: Settings) {
     await set(ref(db, 'settings'), settings);
@@ -113,6 +142,16 @@ export const dbService = {
   },
 
   // Users
+  async saveUser(user: Omit<UserWithPin, 'id'>) {
+    const newRef = push(ref(db, 'users'));
+    await set(newRef, { ...user, id: newRef.key });
+  },
+  async updateUser(id: string, user: Partial<UserWithPin>) {
+    await update(ref(db, `users/${id}`), user);
+  },
+  async deleteUser(id: string) {
+    await remove(ref(db, `users/${id}`));
+  },
   onUsersChange(callback: (users: UserWithPin[]) => void) {
     return onValue(ref(db, 'users'), (snapshot) => {
       callback(mapFirebaseData(snapshot.val()));
