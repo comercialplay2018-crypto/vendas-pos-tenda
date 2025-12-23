@@ -2,14 +2,10 @@
 import { jsPDF } from "jspdf";
 import { Product, Sale, Settings } from "../types";
 
-const loadImage = (url: string | undefined): Promise<string> => {
+const loadImage = (url: string | undefined): Promise<HTMLImageElement | null> => {
   return new Promise((resolve) => {
     if (!url || typeof url !== 'string' || url.trim() === '') {
-      return resolve('');
-    }
-
-    if (url.startsWith('data:image')) {
-      return resolve(url);
+      return resolve(null);
     }
 
     const img = new Image();
@@ -17,26 +13,35 @@ const loadImage = (url: string | undefined): Promise<string> => {
     
     const timeout = setTimeout(() => {
       img.src = "";
-      resolve('');
+      resolve(null);
     }, 7000);
 
     img.onload = () => {
       clearTimeout(timeout);
+      resolve(img);
+    };
+    img.onerror = () => {
+      clearTimeout(timeout);
+      resolve(null);
+    };
+    img.src = url;
+  });
+};
+
+const loadImageAsDataURL = (url: string | undefined): Promise<string> => {
+  return new Promise((resolve) => {
+    if (!url || typeof url !== 'string' || url.trim() === '') return resolve('');
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
       const canvas = document.createElement('canvas');
       canvas.width = img.width;
       canvas.height = img.height;
       const ctx = canvas.getContext('2d');
       ctx?.drawImage(img, 0, 0);
-      try {
-        resolve(canvas.toDataURL('image/png'));
-      } catch (e) {
-        resolve('');
-      }
+      resolve(canvas.toDataURL('image/png'));
     };
-    img.onerror = () => {
-      clearTimeout(timeout);
-      resolve('');
-    };
+    img.onerror = () => resolve('');
     img.src = url;
   });
 };
@@ -46,7 +51,7 @@ const drawSingleLabel = async (doc: jsPDF, product: Product, x: number, y: numbe
     doc.rect(x, y, width, height);
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${product.code}`;
     try {
-      const qrBase64 = await loadImage(qrUrl);
+      const qrBase64 = await loadImageAsDataURL(qrUrl);
       if (qrBase64) doc.addImage(qrBase64, 'PNG', x + 2, y + 5, 18, 18);
     } catch(e) {}
     doc.setFont('helvetica', 'bold');
@@ -109,158 +114,186 @@ export const generateAllLabelsPDF = async (products: Product[]) => {
   doc.save(`todas-etiquetas-tenda-jl.pdf`);
 };
 
-export const generateReceiptPDF = async (sale: Sale, settings: Settings) => {
-  const doc = new jsPDF({ unit: 'mm', format: [80, 500] });
-  const width = 80;
-  let y = 10;
+export const generateReceiptImage = async (sale: Sale, settings: Settings) => {
+  const width = 450;
+  
+  // Cálculo de altura dinâmica mais robusto para evitar cortes
+  let dynamicHeight = 350; // Cabeçalho + Dados Iniciais + Margens base
+  if (settings.logoUrl) dynamicHeight += 150;
+  dynamicHeight += sale.items.length * 60; // Espaço por item
+  dynamicHeight += 250; // Totais + Forma de Pagamento
+  if (sale.installments) dynamicHeight += (sale.installments.length * 30) + 100;
+  if (settings.pixQrUrl && (sale.paymentMethod === 'pix' || sale.paymentMethod === 'crediario')) {
+    dynamicHeight += 350; // Área do QR Code Pix
+  }
+  dynamicHeight += 100; // Rodapé final e respiro
 
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = dynamicHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // Fundo Branco Sólido
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, width, dynamicHeight);
+
+  let y = 40;
+
+  // Logo
   if (settings.logoUrl) {
-    try {
-      const logo = await loadImage(settings.logoUrl);
-      if (logo) {
-        doc.addImage(logo, 'PNG', (width - 35) / 2, y, 35, 35);
-        y += 40;
-      }
-    } catch (e) {}
+    const logo = await loadImage(settings.logoUrl);
+    if (logo) {
+      const logoW = 140;
+      const logoH = (logo.height * logoW) / logo.width;
+      ctx.drawImage(logo, (width - logoW) / 2, y, logoW, logoH);
+      y += logoH + 30;
+    }
   }
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.text(settings.companyName || "TENDA JL", width / 2, y, { align: 'center' });
-  y += 6;
-  doc.setFontSize(8);
-  doc.text(`COMPROVANTE DE VENDA`, width / 2, y, { align: 'center' });
-  y += 8;
+  // Título Empresa
+  ctx.fillStyle = "#000000";
+  ctx.font = "900 26px Inter, Helvetica, Arial";
+  ctx.textAlign = "center";
+  ctx.fillText(settings.companyName.toUpperCase(), width / 2, y);
+  y += 35;
 
+  ctx.font = "bold 18px Inter, Helvetica, Arial";
+  ctx.fillText("COMPROVANTE DE VENDA", width / 2, y);
+  y += 50;
+
+  // Dados do Pedido
+  ctx.textAlign = "left";
+  ctx.font = "14px Inter, Helvetica, Arial";
   const date = new Date(sale.timestamp);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`PEDIDO: #${(sale.id || '').substring(0, 8)}`, 5, y);
+  ctx.fillText(`PEDIDO: #${sale.id.substring(0, 8).toUpperCase()}`, 30, y);
+  ctx.textAlign = "right";
+  ctx.fillText(`${date.toLocaleDateString()} ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`, width - 30, y);
+  y += 30;
   
-  const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  doc.text(`${date.toLocaleDateString()} ${timeStr}`, width - 5, y, { align: 'right' });
-  y += 4;
-  doc.text(`VENDEDOR: ${sale.sellerName}`, 5, y);
-  y += 4;
+  ctx.textAlign = "left";
+  ctx.fillText(`VENDEDOR: ${sale.sellerName.toUpperCase()}`, 30, y);
+  y += 30;
+
   if (sale.customerName) {
-    doc.text(`CLIENTE: ${sale.customerName}`, 5, y);
-    y += 4;
+    ctx.fillText(`CLIENTE: ${sale.customerName.toUpperCase()}`, 30, y);
+    y += 30;
   }
-  
-  y += 2;
-  doc.setLineWidth(0.1);
-  doc.line(5, y, width - 5, y);
-  y += 5;
 
-  doc.setFont('helvetica', 'bold');
-  doc.text('DESCRIÇÃO', 5, y);
-  doc.text('QTD', width - 25, y, { align: 'right' });
-  doc.text('TOTAL', width - 5, y, { align: 'right' });
-  y += 5;
+  // Linha divisória tracejada
+  y += 10;
+  ctx.beginPath();
+  ctx.setLineDash([5, 5]);
+  ctx.strokeStyle = "#000000";
+  ctx.moveTo(30, y);
+  ctx.lineTo(width - 30, y);
+  ctx.stroke();
+  y += 40;
 
-  doc.setFont('helvetica', 'normal');
-  let totalDiscount = 0;
+  // Cabeçalho dos Itens
+  ctx.font = "bold 15px Inter, Helvetica, Arial";
+  ctx.textAlign = "left";
+  ctx.fillText("DESCRIÇÃO", 30, y);
+  ctx.textAlign = "right";
+  ctx.fillText("QTD", width - 130, y);
+  ctx.fillText("TOTAL", width - 30, y);
+  y += 30;
+
+  // Lista de Itens
+  ctx.font = "14px Inter, Helvetica, Arial";
+  ctx.setLineDash([]);
   sale.items.forEach(item => {
-    const unitPrice = item.price || 0;
-    const itemDiscount = item.discount || 0;
-    totalDiscount += itemDiscount * item.quantity;
-    const lineTotal = (unitPrice - itemDiscount) * item.quantity;
-    
-    doc.setFont('helvetica', 'bold');
-    doc.text(item.name.toUpperCase().substring(0, 35), 5, y);
-    y += 4;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.text(`${item.quantity} x R$ ${unitPrice.toFixed(2)}`, 7, y);
-    doc.setFontSize(8);
-    doc.text(`R$ ${lineTotal.toFixed(2)}`, width - 5, y, { align: 'right' });
-    y += 5;
+    ctx.textAlign = "left";
+    const lineTotal = (item.price - item.discount) * item.quantity;
+    ctx.font = "bold 15px Inter, Helvetica, Arial";
+    ctx.fillText(item.name.toUpperCase().substring(0, 28), 30, y);
+    y += 20;
+    ctx.font = "13px Inter, Helvetica, Arial";
+    ctx.fillText(`${item.quantity} un x R$ ${item.price.toFixed(2)}`, 35, y);
+    ctx.textAlign = "right";
+    ctx.font = "bold 15px Inter, Helvetica, Arial";
+    ctx.fillText(`R$ ${lineTotal.toFixed(2)}`, width - 30, y);
+    y += 35;
   });
 
-  y += 2;
-  doc.line(5, y, width - 5, y);
-  y += 6;
-  
-  doc.setFontSize(9);
-  doc.text('SUBTOTAL:', 5, y);
-  doc.text(`R$ ${(sale.subtotal + totalDiscount).toFixed(2)}`, width - 5, y, { align: 'right' });
-  y += 5;
+  // Linha de Totais
+  y += 10;
+  ctx.beginPath();
+  ctx.setLineDash([5, 5]);
+  ctx.moveTo(30, y);
+  ctx.lineTo(width - 30, y);
+  ctx.stroke();
+  y += 45;
 
-  if (totalDiscount > 0) {
-    doc.setFont('helvetica', 'bold');
-    doc.text('DESCONTOS:', 5, y);
-    doc.text(`- R$ ${totalDiscount.toFixed(2)}`, width - 5, y, { align: 'right' });
-    y += 5;
-    doc.setFont('helvetica', 'normal');
-  }
+  ctx.textAlign = "left";
+  ctx.font = "15px Inter, Helvetica, Arial";
+  ctx.fillText("SUBTOTAL:", 30, y);
+  ctx.textAlign = "right";
+  ctx.fillText(`R$ ${sale.subtotal.toFixed(2)}`, width - 30, y);
+  y += 30;
 
   if (sale.fee) {
-    doc.text('TAXA ADICIONAL:', 5, y);
-    doc.text(`R$ ${sale.fee.toFixed(2)}`, width - 5, y, { align: 'right' });
-    y += 5;
+    ctx.textAlign = "left";
+    ctx.fillText("TAXA (SERVIÇO/JUROS):", 30, y);
+    ctx.textAlign = "right";
+    ctx.fillText(`R$ ${sale.fee.toFixed(2)}`, width - 30, y);
+    y += 30;
   }
 
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.text('TOTAL GERAL:', 5, y);
-  doc.text(`R$ ${(sale.total || 0).toFixed(2)}`, width - 5, y, { align: 'right' });
-  y += 8;
+  ctx.textAlign = "left";
+  ctx.font = "bold 24px Inter, Helvetica, Arial";
+  ctx.fillText("TOTAL GERAL:", 30, y);
+  ctx.textAlign = "right";
+  ctx.fillText(`R$ ${sale.total.toFixed(2)}`, width - 30, y);
+  y += 50;
 
-  if (sale.paymentMethod === 'dinheiro') {
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.text('VALOR RECEBIDO:', 5, y);
-    doc.text(`R$ ${(sale.amountPaid || 0).toFixed(2)}`, width - 5, y, { align: 'right' });
-    y += 5;
-    doc.setFont('helvetica', 'bold');
-    doc.text('TROCO:', 5, y);
-    doc.text(`R$ ${(sale.change || 0).toFixed(2)}`, width - 5, y, { align: 'right' });
-    y += 8;
-  }
+  ctx.textAlign = "center";
+  ctx.font = "bold 18px Inter, Helvetica, Arial";
+  ctx.fillText(`FORMA DE PGTO: ${sale.paymentMethod.toUpperCase()}`, width / 2, y);
+  y += 50;
 
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
-  doc.text(`FORMA PGTO: ${(sale.paymentMethod || '').toUpperCase()}`, 5, y);
-  y += 6;
-
+  // Parcelas do Crediário
   if (sale.installments && sale.installments.length > 0) {
-    doc.line(5, y, width - 5, y);
-    y += 5;
-    doc.setFont('helvetica', 'bold');
-    doc.text('CRONOGRAMA DE VENCIMENTOS:', 5, y);
-    y += 5;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
+    ctx.font = "bold 15px Inter, Helvetica, Arial";
+    ctx.fillText("PROGRAMAÇÃO DE PARCELAS", width / 2, y);
+    y += 30;
+    ctx.font = "14px Inter, Helvetica, Arial";
     sale.installments.forEach(inst => {
-      const d = new Date(inst.dueDate).toLocaleDateString();
-      doc.text(`Parc. ${inst.number} - Venc: ${d}`, 7, y);
-      doc.text(`R$ ${inst.value.toFixed(2)}`, width - 5, y, { align: 'right' });
-      y += 4;
+      ctx.textAlign = "left";
+      ctx.fillText(`${inst.number}ª Parc. - ${new Date(inst.dueDate).toLocaleDateString()}`, 50, y);
+      ctx.textAlign = "right";
+      ctx.fillText(`R$ ${inst.value.toFixed(2)}`, width - 50, y);
+      y += 25;
     });
-    y += 6;
+    y += 20;
   }
 
+  // QR Code Pix para Pagamento
   if (settings.pixQrUrl && (sale.paymentMethod === 'pix' || sale.paymentMethod === 'crediario')) {
-    try {
-      const pix = await loadImage(settings.pixQrUrl);
-      if (pix) {
-        y += 2;
-        doc.line(5, y, width - 5, y);
-        y += 6;
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.text('PAGUE COM PIX AQUI', width / 2, y, { align: 'center' });
-        y += 5;
-        doc.addImage(pix, 'PNG', (width - 40) / 2, y, 40, 40);
-        y += 45;
-      }
-    } catch (e) {}
+    const pix = await loadImage(settings.pixQrUrl);
+    if (pix) {
+      ctx.textAlign = "center";
+      ctx.font = "bold 14px Inter, Helvetica, Arial";
+      ctx.fillText("ESCANEIE PARA PAGAR VIA PIX", width / 2, y);
+      y += 20;
+      ctx.drawImage(pix, (width - 180) / 2, y, 180, 180);
+      y += 210;
+    }
   }
 
-  y += 10;
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(7);
-  doc.text('OBRIGADO PELA PREFERÊNCIA!', width / 2, y, { align: 'center' });
-  doc.save(`recibo-tenda-jl-${(sale.id || '').substring(0, 8)}.pdf`);
+  // Rodapé e Mensagem Final
+  ctx.textAlign = "center";
+  ctx.font = "italic 13px Inter, Helvetica, Arial";
+  ctx.fillText("ESTE NÃO É UM DOCUMENTO FISCAL", width / 2, y);
+  y += 20;
+  ctx.font = "bold 14px Inter, Helvetica, Arial";
+  ctx.fillText("OBRIGADO PELA PREFERÊNCIA!", width / 2, y);
+
+  // Download da imagem PNG
+  const link = document.createElement('a');
+  link.download = `recibo-tenda-jl-${sale.id.substring(0, 8)}.png`;
+  link.href = canvas.toDataURL('image/png', 1.0);
+  link.click();
 };
 
 export const generateLoginCardPDF = async (user: any, settings: Settings) => {
@@ -268,20 +301,17 @@ export const generateLoginCardPDF = async (user: any, settings: Settings) => {
   const width = 100;
   const height = 150;
   
-  // Fundo Colorido (Gradient Simulado)
-  doc.setFillColor(234, 88, 12); // Orange 600
+  doc.setFillColor(234, 88, 12); 
   doc.rect(0, 0, width, height, 'F');
   
-  // Card Central Branco
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(10, 10, 80, 130, 10, 10, 'F');
   
   let y = 25;
   
-  // Logo
   if (settings.logoUrl) {
     try {
-      const logo = await loadImage(settings.logoUrl);
+      const logo = await loadImageAsDataURL(settings.logoUrl);
       if (logo) {
         doc.addImage(logo, 'PNG', (width - 25) / 2, y, 25, 25);
         y += 30;
@@ -301,13 +331,11 @@ export const generateLoginCardPDF = async (user: any, settings: Settings) => {
   doc.text('CRACHÁ DE ACESSO', width/2, y, { align: 'center' });
   y += 15;
   
-  // QR Code de Acesso
-  // Formato: TENDA-LOGIN|USERNAME|PIN
   const loginToken = `TENDA-LOGIN|${user.name}|${user.pin}`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(loginToken)}`;
   
   try {
-    const qr = await loadImage(qrUrl);
+    const qr = await loadImageAsDataURL(qrUrl);
     if (qr) {
       doc.addImage(qr, 'PNG', (width - 45) / 2, y, 45, 45);
       y += 55;

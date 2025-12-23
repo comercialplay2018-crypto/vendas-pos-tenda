@@ -10,13 +10,12 @@ import {
 import { dbService, UserWithPin } from './services/dbService';
 import { Product, Customer, Sale, User, Settings as SettingsType, PaymentMethod, Installment } from './types';
 import { Scanner } from './components/Scanner';
-import { generateLabelPDF, generateReceiptPDF, generateAllLabelsPDF, generateLoginCardPDF } from './utils/pdfUtils';
+import { generateLabelPDF, generateReceiptImage, generateAllLabelsPDF, generateLoginCardPDF } from './utils/pdfUtils';
 import { GoogleGenAI } from "@google/genai";
 
-const APP_VERSION = "3.3.2-PRODUCTION";
+const APP_VERSION = "3.3.6-PRODUCTION";
 const ADMIN_QR_KEY = "TENDA-JL-ADMIN-2025"; 
 
-// LOGIN MESTRE PARA EMERGÊNCIA
 const MASTER_ADMIN_USER = "ADMIN";
 const MASTER_ADMIN_PIN = "202525";
 
@@ -42,7 +41,7 @@ const App: React.FC = () => {
   const [loginData, setLoginData] = useState({ username: '', pin: '' });
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'pos' | 'inventory' | 'customers' | 'sales' | 'settings' | 'crediario' | 'team'>('pos');
+  const [activeTab, setActiveTab] = useState<'pos' | 'inventory' | 'customers' | 'sales' | 'settings' | 'crediario' | 'team' | 'reports'>('pos');
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -165,7 +164,7 @@ const App: React.FC = () => {
     }
   };
 
-  const finishSale = async () => {
+  const finishSale = async (printReceipt = true) => {
     if (isFinishing || cart.length === 0 || !currentUser) return;
     
     const total = calculateTotal();
@@ -210,7 +209,9 @@ const App: React.FC = () => {
       }
 
       const saleId = await dbService.saveSale(saleData);
-      generateReceiptPDF({ ...saleData, id: saleId } as Sale, settings).catch(() => {});
+      if (printReceipt) {
+        generateReceiptImage({ ...saleData, id: saleId } as Sale, settings).catch(() => {});
+      }
       
       setCart([]); 
       setSelectedCustomer(null); 
@@ -243,15 +244,14 @@ const App: React.FC = () => {
 
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Como um consultor de varejo experiente, analise estes dados de vendas recentes da loja "${settings.companyName}" e forneça 3 recomendações estratégicas curtas e acionáveis em Português para aumentar as vendas e fidelizar clientes. Dados: ${JSON.stringify(salesSummary)}`,
+        contents: `Analise estes dados da loja "${settings.companyName}" e dê 3 dicas estratégicas para crescer: ${JSON.stringify(salesSummary)}`,
       });
 
       if (response.text) {
-        alert("RELATÓRIO DE INSIGHTS IA:\n\n" + response.text);
+        alert("INSIGHTS IA:\n\n" + response.text);
       }
     } catch (error) {
-      console.error("Erro na análise da IA:", error);
-      alert("Não foi possível gerar o relatório de insights no momento.");
+      alert("Erro ao gerar insights.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -261,7 +261,6 @@ const App: React.FC = () => {
     e.preventDefault();
     setIsLoggingIn(true);
     
-    // Check para login mestre
     if (loginData.username.toUpperCase() === MASTER_ADMIN_USER && loginData.pin === MASTER_ADMIN_PIN) {
       setCurrentUser({ id: 'master', name: 'SUPER ADMIN', role: 'admin' });
       setIsLoggingIn(false);
@@ -315,7 +314,6 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Scanner disponível na tela de login */}
         {isScannerOpen && (
           <Scanner 
             onScan={handleScannerScan} 
@@ -341,6 +339,7 @@ const App: React.FC = () => {
           <div className="flex flex-col gap-6 flex-1 w-full px-2">
             <NavIcon icon={<ShoppingCart size={24}/>} active={activeTab === 'pos'} onClick={() => setActiveTab('pos')} label="Caixa" />
             <NavIcon icon={<CreditCard size={24}/>} active={activeTab === 'crediario'} onClick={() => setActiveTab('crediario')} label="Crediário" />
+            <NavIcon icon={<BarChart3 size={24}/>} active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} label="Relatórios" />
             <NavIcon icon={<Package size={24}/>} active={activeTab === 'inventory'} onClick={() => setActiveTab('inventory')} label="Estoque" />
             <NavIcon icon={<Users size={24}/>} active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} label="Clientes" />
             <NavIcon icon={<History size={24}/>} active={activeTab === 'sales'} onClick={() => setActiveTab('sales')} label="Vendas" />
@@ -484,7 +483,7 @@ const App: React.FC = () => {
                   </div>
                 </div>
                 <button 
-                  onClick={finishSale} 
+                  onClick={() => finishSale(true)} 
                   disabled={isFinishing || cart.length === 0} 
                   className="w-full py-8 bg-gradient-to-r from-orange-600 to-rose-500 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl hover:scale-[1.03] active:scale-95 transition-all flex justify-center items-center gap-3 disabled:opacity-50"
                 >
@@ -493,6 +492,10 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === 'reports' && (
+          <ReportsView sales={sales} products={products} />
         )}
 
         {activeTab === 'crediario' && (
@@ -563,10 +566,10 @@ const App: React.FC = () => {
       <nav className="md:hidden fixed bottom-6 left-6 right-6 bg-white/95 backdrop-blur-2xl border border-gray-200 rounded-[2.5rem] shadow-2xl flex items-center justify-around p-3 z-[60]">
         <MobileNavIcon icon={<ShoppingCart/>} label="Caixa" active={activeTab === 'pos'} onClick={() => setActiveTab('pos')} />
         <MobileNavIcon icon={<CreditCard/>} label="Crediário" active={activeTab === 'crediario'} onClick={() => setActiveTab('crediario')} />
+        <MobileNavIcon icon={<BarChart3/>} label="Relat." active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} />
         <MobileNavIcon icon={<Package/>} label="Estoque" active={activeTab === 'inventory'} onClick={() => setActiveTab('inventory')} />
         <MobileNavIcon icon={<Users/>} label="Clientes" active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} />
         <MobileNavIcon icon={<History/>} label="Vendas" active={activeTab === 'sales'} onClick={() => setActiveTab('sales')} />
-        {currentUser.role === 'admin' && <MobileNavIcon icon={<UserPlus/>} label="Equipe" active={activeTab === 'team'} onClick={() => setActiveTab('team')} />}
         <MobileNavIcon icon={<SettingsIcon/>} label="Menu" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
       </nav>
 
@@ -577,6 +580,113 @@ const App: React.FC = () => {
           mode={scannerMode}
         />
       )}
+    </div>
+  );
+};
+
+const ReportsView = ({ sales, products }: { sales: Sale[], products: Product[] }) => {
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [prodSearch, setProdSearch] = useState('');
+
+  const filteredSales = useMemo(() => {
+    const start = new Date(startDate + 'T00:00:00').getTime();
+    const end = new Date(endDate + 'T23:59:59').getTime();
+    return sales.filter(s => s.status === 'finalizada' && s.timestamp >= start && s.timestamp <= end);
+  }, [sales, startDate, endDate]);
+
+  const stats = useMemo(() => {
+    let totalRevenue = 0;
+    let totalItems = 0;
+    const productStats: Record<string, { qty: number, total: number, name: string, code: string }> = {};
+
+    filteredSales.forEach(sale => {
+      totalRevenue += sale.total;
+      sale.items.forEach(item => {
+        totalItems += item.quantity;
+        if (!productStats[item.productId]) {
+          productStats[item.productId] = { qty: 0, total: 0, name: item.name, code: '' };
+          const p = products.find(prod => prod.id === item.productId);
+          if (p) productStats[item.productId].code = p.code;
+        }
+        productStats[item.productId].qty += item.quantity;
+        productStats[item.productId].total += (item.price - item.discount) * item.quantity;
+      });
+    });
+
+    return { totalRevenue, totalItems, productStats: Object.values(productStats).sort((a, b) => b.qty - a.qty) };
+  }, [filteredSales, products]);
+
+  const searchedProductStats = useMemo(() => {
+    if (!prodSearch) return stats.productStats;
+    return stats.productStats.filter(p => 
+      p.name.toLowerCase().includes(prodSearch.toLowerCase()) || 
+      p.code.toLowerCase().includes(prodSearch.toLowerCase())
+    );
+  }, [stats.productStats, prodSearch]);
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500 pb-10">
+      <div className="flex justify-between items-end">
+        <div>
+          <h1 className="text-3xl font-black text-gray-800 tracking-tighter">Relatórios de Desempenho</h1>
+          <p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Análise de Vendas e Itens por Período</p>
+        </div>
+      </div>
+
+      <div className="bg-white p-8 rounded-[3rem] shadow-xl border-2 border-gray-50 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-2">
+          <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Data Inicial</label>
+          <input type="date" className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-orange-600 rounded-2xl font-black outline-none" value={startDate} onChange={e => setStartDate(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Data Final</label>
+          <input type="date" className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-orange-600 rounded-2xl font-black outline-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-gradient-to-tr from-orange-600 to-rose-500 p-8 rounded-[3rem] text-white shadow-xl">
+          <p className="text-[10px] font-black uppercase opacity-70 mb-1">Faturamento no Período</p>
+          <h3 className="text-3xl font-black tracking-tighter">R$ {stats.totalRevenue.toFixed(2)}</h3>
+        </div>
+        <div className="bg-white p-8 rounded-[3rem] shadow-lg border-2 border-gray-50">
+          <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Itens Vendidos</p>
+          <h3 className="text-3xl font-black tracking-tighter text-gray-800">{stats.totalItems} un.</h3>
+        </div>
+        <div className="bg-white p-8 rounded-[3rem] shadow-lg border-2 border-gray-50">
+          <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Total de Pedidos</p>
+          <h3 className="text-3xl font-black tracking-tighter text-gray-800">{filteredSales.length}</h3>
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-black text-gray-800">Produtos Vendidos</h2>
+          <div className="flex gap-2 items-center bg-white px-4 py-2 rounded-2xl border shadow-sm">
+            <Search size={16} className="text-gray-400" />
+            <input type="text" placeholder="Localizar item..." className="bg-transparent outline-none text-xs font-bold w-40" value={prodSearch} onChange={e => setProdSearch(e.target.value)} />
+          </div>
+        </div>
+        <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border-2 border-gray-50">
+          <table className="w-full text-left">
+            <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
+              <tr><th className="p-6">Produto</th><th className="p-6 text-center">Qtd Vendida</th><th className="p-6 text-right">Subtotal</th></tr>
+            </thead>
+            <tbody className="divide-y">
+              {searchedProductStats.length > 0 ? searchedProductStats.map((p, idx) => (
+                <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                  <td className="p-6"><p className="font-black text-gray-800">{p.name}</p><p className="text-[9px] font-black text-orange-600 uppercase">{p.code}</p></td>
+                  <td className="p-6 text-center"><span className="px-4 py-1.5 bg-orange-100 text-orange-700 rounded-full font-black text-xs">{p.qty} un</span></td>
+                  <td className="p-6 text-right font-black text-gray-900">R$ {p.total.toFixed(2)}</td>
+                </tr>
+              )) : (
+                <tr><td colSpan={3} className="p-20 text-center opacity-30 italic font-bold">Nenhuma venda neste período.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 };
@@ -630,11 +740,7 @@ const TeamView = ({ team, onSave, onDelete, onEdit, onAddNew, isModalOpen, setIs
                 <button onClick={() => confirm('Remover acesso?') && onDelete(u.id)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg"><Trash2 size={18}/></button>
               </div>
             </div>
-            
-            <button 
-              onClick={() => generateLoginCardPDF(u, settings)}
-              className="w-full py-3 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center gap-3 text-gray-500 font-black text-[10px] uppercase hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-all"
-            >
+            <button onClick={() => generateLoginCardPDF(u, settings)} className="w-full py-3 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center gap-3 text-gray-500 font-black text-[10px] uppercase hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-all">
               <QrCode size={18}/> Gerar Crachá de Acesso
             </button>
           </div>
@@ -646,7 +752,7 @@ const TeamView = ({ team, onSave, onDelete, onEdit, onAddNew, isModalOpen, setIs
             <h2 className="text-2xl font-black mb-8">{editingUser ? 'Editar' : 'Novo'} Usuário</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <input required placeholder="NOME DO USUÁRIO" className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-orange-600 outline-none" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} />
-              <input required placeholder="PIN DE ACESSO (NÚMEROS)" maxLength={6} className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-orange-600 outline-none" value={formData.pin} onChange={e=>setFormData({...formData, pin: e.target.value})} />
+              <input required placeholder="PIN DE ACESSO (6 DÍGITOS)" maxLength={6} className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-orange-600 outline-none" value={formData.pin} onChange={e=>setFormData({...formData, pin: e.target.value})} />
               <select className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-600" value={formData.role} onChange={e=>setFormData({...formData, role: e.target.value as any})}>
                 <option value="vendedor">Vendedor</option>
                 <option value="admin">Administrador</option>
@@ -668,18 +774,17 @@ const SalesHistory = ({ sales, dailyEarnings, settings, onGenerateInsights, isAn
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-gradient-to-tr from-orange-600 to-rose-500 p-8 rounded-[3rem] text-white shadow-xl">
-          <p className="text-[11px] font-black uppercase opacity-70 mb-1">Caixa Ativo de Hoje</p>
+          <p className="text-[11px] font-black uppercase opacity-70 mb-1">Faturamento Hoje</p>
           <h3 className="text-4xl font-black tracking-tighter">R$ {dailyEarnings.toFixed(2)}</h3>
-          <p className="text-[10px] mt-2 opacity-60">* Não inclui canceladas</p>
         </div>
-        <div className="bg-white p-8 rounded-[3rem] shadow-lg flex items-center justify-between">
-          <h4 className="font-black text-gray-500 uppercase text-xs tracking-widest">Relatório IA</h4>
-          <button onClick={onGenerateInsights} disabled={isAnalyzing} className="p-4 bg-gray-50 rounded-2xl text-orange-600 hover:bg-orange-600 hover:text-white transition-all shadow-sm">
+        <div className="bg-white p-8 rounded-[3rem] shadow-lg flex items-center justify-between border">
+          <h4 className="font-black text-gray-400 uppercase text-xs tracking-widest">Análise de IA</h4>
+          <button onClick={onGenerateInsights} disabled={isAnalyzing} className="p-4 bg-orange-50 rounded-2xl text-orange-600 hover:bg-orange-600 hover:text-white transition-all shadow-sm">
             {isAnalyzing ? <Loader2 className="animate-spin" /> : <Sparkles size={24} />}
           </button>
         </div>
       </div>
-      <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border-2 border-gray-50">
+      <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
@@ -690,36 +795,18 @@ const SalesHistory = ({ sales, dailyEarnings, settings, onGenerateInsights, isAn
                 <tr key={s.id} className={`transition-all ${s.status === 'cancelada' ? 'bg-gray-50 opacity-40 grayscale' : 'hover:bg-gray-50/50'}`}>
                   <td className="p-6">
                     {s.status === 'cancelada' ? (
-                      <span className="bg-rose-100 text-rose-600 px-4 py-1.5 rounded-full text-[9px] font-black uppercase border border-rose-200 flex items-center gap-1 w-fit"><ShieldAlert size={10}/> Cancelada</span>
+                      <span className="bg-rose-100 text-rose-600 px-4 py-1.5 rounded-full text-[9px] font-black uppercase border border-rose-200">Cancelada</span>
                     ) : (
-                      <span className="bg-green-100 text-green-600 px-4 py-1.5 rounded-full text-[9px] font-black uppercase border border-green-200 flex items-center gap-1 w-fit"><CheckCircle2 size={10}/> Finalizada</span>
+                      <span className="bg-green-100 text-green-600 px-4 py-1.5 rounded-full text-[9px] font-black uppercase border border-green-200">Finalizada</span>
                     )}
                   </td>
-                  <td className="p-6">
-                    <div className="font-black text-gray-800">{new Date(s.timestamp).toLocaleDateString()}</div>
-                    <div className="text-[9px] text-gray-400 font-bold uppercase">{new Date(s.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
-                  </td>
+                  <td className="p-6"><div className="font-black text-gray-800">{new Date(s.timestamp).toLocaleDateString()}</div><div className="text-[9px] text-gray-400 font-bold uppercase">{new Date(s.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div></td>
                   <td className="p-6 font-bold text-gray-600">{s.customerName || 'Balcão'}</td>
-                  <td className={`p-6 text-right font-black text-xl ${s.status === 'cancelada' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                    R$ {Number(s.total).toFixed(2)}
-                  </td>
+                  <td className={`p-6 text-right font-black text-xl ${s.status === 'cancelada' ? 'line-through text-gray-400' : 'text-gray-900'}`}>R$ {Number(s.total).toFixed(2)}</td>
                   <td className="p-6">
                     <div className="flex justify-center gap-2">
-                      <button 
-                        onClick={() => generateReceiptPDF(s, settings)} 
-                        className="p-3 text-gray-400 hover:text-orange-600 hover:bg-white rounded-xl transition-all border shadow-sm" 
-                        title="Baixar Recibo"
-                      >
-                        <Download size={18}/>
-                      </button>
-                      {s.status === 'finalizada' && (
-                        <button 
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onVoidAttempt(s.id); }} 
-                          className="px-5 py-3 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl transition-all font-black text-[10px] flex items-center gap-2 border border-rose-100 shadow-sm"
-                        >
-                          <Ban size={14}/> ESTORNAR
-                        </button>
-                      )}
+                      <button onClick={() => generateReceiptImage(s, settings)} className="p-3 text-gray-400 hover:text-orange-600 border rounded-xl" title="Baixar Recibo"><Download size={18}/></button>
+                      {s.status === 'finalizada' && <button onClick={() => onVoidAttempt(s.id)} className="px-5 py-3 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl transition-all font-black text-[10px] border border-rose-100">CANCELAR</button>}
                     </div>
                   </td>
                 </tr>
@@ -747,28 +834,28 @@ const CrediarioManagement = ({ sales, customers, onUpdateInstallments }: any) =>
       }
       return inst;
     });
-    try { await onUpdateInstallments(sale.id, newInstallments); } catch (e) { alert("Erro ao atualizar parcela."); }
+    try { await onUpdateInstallments(sale.id, newInstallments); } catch (e) { alert("Erro ao atualizar."); }
   };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      <div><h1 className="text-3xl font-black text-gray-800 tracking-tighter">Gestão de Crediário</h1><p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Controle Financeiro</p></div>
-      <div className="bg-white p-6 rounded-[2.5rem] shadow-xl border-2 border-transparent focus-within:border-orange-600 transition-all flex items-center gap-4"><Search className="text-gray-300" /><input type="text" placeholder="Filtrar cliente..." className="flex-1 font-bold outline-none" value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)} /></div>
+      <div><h1 className="text-3xl font-black text-gray-800 tracking-tighter">Crediário</h1><p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Controle de Pagamentos</p></div>
+      <div className="bg-white p-6 rounded-[2.5rem] shadow-xl border flex items-center gap-4 focus-within:border-orange-600 transition-all"><Search className="text-gray-300" /><input type="text" placeholder="Filtrar cliente..." className="flex-1 font-bold outline-none" value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)} /></div>
       <div className="space-y-6">
         {filteredSales.map((sale: Sale) => {
           const totalPaid = sale.installments?.filter(i => i.status === 'pago').reduce((sum, i) => sum + i.value, 0) || 0;
           const totalPending = (sale.total || 0) - totalPaid;
           return (
-            <div key={sale.id} className="bg-white rounded-[3rem] p-8 shadow-xl border-2 border-gray-50 group hover:border-orange-200 transition-all">
+            <div key={sale.id} className="bg-white rounded-[3rem] p-8 shadow-xl border group hover:border-orange-200 transition-all">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
                 <div className="flex items-center gap-4"><div className="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center text-orange-600"><Users size={28} /></div><div><h3 className="text-xl font-black text-gray-800">{sale.customerName}</h3><p className="text-[10px] font-black text-gray-400 uppercase">Venda de {new Date(sale.timestamp).toLocaleDateString()}</p></div></div>
-                <div className="flex gap-4"><div className="px-5 py-3 bg-green-50 rounded-2xl border border-green-100 text-center"><p className="text-[9px] font-black text-green-600 uppercase">Recebido</p><p className="font-black text-green-700">R$ {totalPaid.toFixed(2)}</p></div><div className="px-5 py-3 bg-rose-50 rounded-2xl border border-rose-100 text-center"><p className="text-[9px] font-black text-rose-600 uppercase">Pendente</p><p className="font-black text-rose-700">R$ {totalPending.toFixed(2)}</p></div></div>
+                <div className="flex gap-4"><div className="px-5 py-3 bg-green-50 rounded-2xl border text-center"><p className="text-[9px] font-black text-green-600 uppercase">Recebido</p><p className="font-black text-green-700">R$ {totalPaid.toFixed(2)}</p></div><div className="px-5 py-3 bg-rose-50 rounded-2xl border text-center"><p className="text-[9px] font-black text-rose-600 uppercase">Pendente</p><p className="font-black text-rose-700">R$ {totalPending.toFixed(2)}</p></div></div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {sale.installments?.map(inst => (
-                  <button key={inst.number} onClick={() => togglePayment(sale, inst.number)} className={`p-5 rounded-[2rem] border-2 transition-all flex flex-col gap-2 relative overflow-hidden ${inst.status === 'pago' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-white border-gray-100 hover:border-orange-300'}`}>
-                    <div className="flex justify-between items-center w-full"><span className="text-[10px] font-black uppercase tracking-widest opacity-60">Parcela {inst.number}</span>{inst.status === 'pago' ? <CheckCircle2 size={18} /> : <Clock size={18} className="text-orange-400" />}</div>
-                    <span className="text-lg font-black tracking-tighter">R$ {inst.value.toFixed(2)}</span>
+                  <button key={inst.number} onClick={() => togglePayment(sale, inst.number)} className={`p-5 rounded-[2rem] border-2 transition-all flex flex-col gap-2 ${inst.status === 'pago' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-white border-gray-100 hover:border-orange-300'}`}>
+                    <div className="flex justify-between items-center w-full"><span className="text-[10px] font-black uppercase tracking-widest opacity-60">Parc. {inst.number}</span>{inst.status === 'pago' ? <CheckCircle2 size={18} /> : <Clock size={18} className="text-orange-400" />}</div>
+                    <span className="text-lg font-black">R$ {inst.value.toFixed(2)}</span>
                     <span className="text-[10px] font-bold opacity-60">Venc: {new Date(inst.dueDate).toLocaleDateString()}</span>
                   </button>
                 ))}
@@ -791,10 +878,10 @@ const InventoryView = ({ products, onSave, onDelete, onEdit, isModalOpen, setIsM
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
-        <div><h1 className="text-3xl font-black text-gray-800 tracking-tighter">Estoque</h1><p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Controle de Produtos</p></div>
-        <div className="flex gap-3"><button onClick={onPrintAll} className="bg-white border-2 border-orange-100 text-orange-600 px-6 py-4 rounded-[2rem] font-black shadow-lg flex items-center gap-2"><Printer size={20}/> ETIQUETAS</button><button onClick={() => { setFormData({ name: '', code: '', sellPrice: '', buyPrice: '', quantity: '' }); setIsModalOpen(true); }} className="bg-orange-600 text-white px-8 py-4 rounded-[2rem] font-black shadow-2xl flex items-center gap-2 hover:scale-105 transition-all"><Plus size={20}/> NOVO ITEM</button></div>
+        <div><h1 className="text-3xl font-black text-gray-800 tracking-tighter">Estoque</h1><p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Produtos Cadastrados</p></div>
+        <div className="flex gap-3"><button onClick={onPrintAll} className="bg-white border text-orange-600 px-6 py-4 rounded-[2rem] font-black shadow-lg flex items-center gap-2"><Printer size={20}/> ETIQUETAS</button><button onClick={() => { setFormData({ name: '', code: '', sellPrice: '', buyPrice: '', quantity: '' }); setIsModalOpen(true); }} className="bg-orange-600 text-white px-8 py-4 rounded-[2rem] font-black shadow-2xl flex items-center gap-2 hover:scale-105 transition-all"><Plus size={20}/> NOVO ITEM</button></div>
       </div>
-      <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden">
+      <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border">
         <table className="w-full text-left">
           <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
             <tr><th className="p-6">Produto</th><th className="p-6">Preço Venda</th><th className="p-6">Estoque</th><th className="p-6 text-center">Ações</th></tr>
@@ -819,16 +906,10 @@ const InventoryView = ({ products, onSave, onDelete, onEdit, isModalOpen, setIsM
               <input required placeholder="NOME DO PRODUTO" className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-orange-600 outline-none" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} />
               <input required placeholder="CÓDIGO / SCANNER" className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-orange-600 outline-none" value={formData.code} onChange={e=>setFormData({...formData, code: e.target.value})} />
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-gray-400 ml-2">PREÇO DE COMPRA (Custo)</label>
-                  <input required placeholder="0.00" type="number" step="0.01" className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-600" value={formData.buyPrice} onChange={e=>setFormData({...formData, buyPrice: e.target.value})} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-orange-600 ml-2">PREÇO DE VENDA</label>
-                  <input required placeholder="0.00" type="number" step="0.01" className="w-full p-4 bg-orange-50 rounded-2xl font-bold outline-none border-2 border-orange-100 focus:border-orange-600" value={formData.sellPrice} onChange={e=>setFormData({...formData, sellPrice: e.target.value})} />
-                </div>
+                <input required placeholder="PREÇO COMPRA" type="number" step="0.01" className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-600" value={formData.buyPrice} onChange={e=>setFormData({...formData, buyPrice: e.target.value})} />
+                <input required placeholder="PREÇO VENDA" type="number" step="0.01" className="w-full p-4 bg-orange-50 rounded-2xl font-bold outline-none border-2 border-orange-100 focus:border-orange-600" value={formData.sellPrice} onChange={e=>setFormData({...formData, sellPrice: e.target.value})} />
               </div>
-              <input required placeholder="QUANTIDADE EM ESTOQUE" type="number" className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-600" value={formData.quantity} onChange={e=>setFormData({...formData, quantity: e.target.value})} />
+              <input required placeholder="ESTOQUE" type="number" className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-600" value={formData.quantity} onChange={e=>setFormData({...formData, quantity: e.target.value})} />
               <div className="flex gap-4 mt-6">
                 <button type="button" onClick={()=>setIsModalOpen(false)} className="flex-1 py-4 font-black text-gray-400">CANCELAR</button>
                 <button type="submit" className="flex-1 py-4 bg-orange-600 text-white rounded-2xl font-black shadow-xl">SALVAR ITEM</button>
@@ -853,7 +934,7 @@ const CustomersView = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIs
       <div className="flex justify-between items-center"><div><h1 className="text-3xl font-black text-gray-800 tracking-tighter">Clientes</h1></div><button onClick={onAddNew} className="bg-rose-500 text-white px-8 py-4 rounded-[2rem] font-black shadow-xl flex items-center gap-2"><Plus size={20}/> CADASTRAR CLIENTE</button></div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {customers.map((c: any) => (
-          <div key={c.id} className="bg-white p-6 rounded-[2.5rem] shadow-lg border-2 border-gray-50 flex items-center justify-between hover:border-orange-200 transition-all">
+          <div key={c.id} className="bg-white p-6 rounded-[2.5rem] shadow-lg border flex items-center justify-between hover:border-orange-200 transition-all">
             <div className="flex items-center gap-4"><div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center font-black text-xl">{c.name[0]}</div><div><h3 className="font-black text-gray-800">{c.name}</h3><p className="text-[10px] text-gray-400 font-bold">{c.contact || 'S/ CONTATO'}</p></div></div>
             <button onClick={() => onEdit(c)} className="p-3 text-gray-300 hover:text-orange-600 transition-colors"><Edit3 size={20}/></button>
           </div>
@@ -861,7 +942,7 @@ const CustomersView = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIs
       </div>
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-[3rem] p-10 shadow-3xl">
+          <div className="bg-white w-full max-md rounded-[3rem] p-10 shadow-3xl">
             <h2 className="text-2xl font-black mb-8">Novo Cliente</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <input required placeholder="NOME COMPLETO" className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-rose-500 outline-none" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} /><input placeholder="TELEFONE (WhatsApp)" className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-rose-500 outline-none" value={formData.contact} onChange={e=>setFormData({...formData, contact: e.target.value})} /><button type="submit" className="w-full py-4 bg-rose-500 text-white rounded-2xl font-black mt-6 shadow-xl">SALVAR CLIENTE</button><button type="button" onClick={()=>setIsModalOpen(false)} className="w-full py-2 font-black text-gray-400">VOLTAR</button>
@@ -881,7 +962,7 @@ const SettingsView = ({ settings, onSave }: any) => {
       <div className="space-y-4">
         <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 ml-2">NOME DA EMPRESA</label><input className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-orange-600 outline-none" value={ls.companyName} onChange={e=>setLs({...ls, companyName: e.target.value})} /></div>
         <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 ml-2">URL DA LOGOMARCA (PNG)</label><input className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-orange-600 outline-none" placeholder="https://..." value={ls.logoUrl || ''} onChange={e=>setLs({...ls, logoUrl: e.target.value})} /></div>
-        <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 ml-2">URL DO QR CODE PIX (Recebimentos)</label><input className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-orange-600 outline-none" placeholder="https://..." value={ls.pixQrUrl || ''} onChange={e=>setLs({...ls, pixQrUrl: e.target.value})} /></div>
+        <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 ml-2">URL DO QR CODE PIX (Pagamentos)</label><input className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-orange-600 outline-none" placeholder="https://..." value={ls.pixQrUrl || ''} onChange={e=>setLs({...ls, pixQrUrl: e.target.value})} /></div>
       </div>
       <button onClick={() => onSave(ls)} className="w-full py-5 bg-orange-600 text-white rounded-[2rem] font-black shadow-xl hover:brightness-110 active:scale-95 transition-all">SALVAR CONFIGURAÇÕES</button>
       <div className="text-center opacity-30 text-[9px] font-black tracking-widest mt-10">BUILD VERSION: {APP_VERSION}</div>
