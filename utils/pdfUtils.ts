@@ -117,15 +117,17 @@ export const generateAllLabelsPDF = async (products: Product[]) => {
 export const generateReceiptImage = async (sale: Sale, settings: Settings) => {
   const width = 450;
   
+  // Cálculo de altura dinâmica para garantir que nada seja cortado
   let dynamicHeight = 350; 
   if (settings.logoUrl) dynamicHeight += 150;
-  dynamicHeight += sale.items.length * 80; 
-  dynamicHeight += 300; 
+  dynamicHeight += sale.items.length * 110; // Aumentado para o espaço do desconto
+  dynamicHeight += 400; 
+  if (sale.paymentMethod === 'dinheiro') dynamicHeight += 120;
   if (sale.installments) dynamicHeight += (sale.installments.length * 30) + 100;
   if (settings.pixQrUrl && (sale.paymentMethod === 'pix' || sale.paymentMethod === 'crediario')) {
-    dynamicHeight += 400; 
+    dynamicHeight += 450; 
   }
-  dynamicHeight += 150; 
+  dynamicHeight += 200; 
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -204,19 +206,19 @@ export const generateReceiptImage = async (sale: Sale, settings: Settings) => {
     ctx.font = "13px Inter, Helvetica, Arial";
     ctx.fillText(`${item.quantity} un x R$ ${item.price.toFixed(2)}`, 35, y);
     
-    // EXIBIÇÃO DE DESCONTO NO RECIBO
+    // EXIBIÇÃO DE DESCONTO CLARA
     if (item.discount > 0) {
       y += 18;
       ctx.font = "italic bold 12px Inter, Helvetica, Arial";
-      ctx.fillStyle = "#e11d48"; // Rose-600
-      ctx.fillText(`DESCONTO APLICADO: - R$ ${item.discount.toFixed(2)}`, 35, y);
+      ctx.fillStyle = "#e11d48"; 
+      ctx.fillText(`DESCONTO: - R$ ${item.discount.toFixed(2)}`, 35, y);
       ctx.fillStyle = "#000000";
     }
 
     ctx.textAlign = "right";
     ctx.font = "bold 15px Inter, Helvetica, Arial";
     ctx.fillText(`R$ ${lineTotal.toFixed(2)}`, width - 30, y);
-    y += 35;
+    y += 45;
   });
 
   y += 10;
@@ -247,7 +249,28 @@ export const generateReceiptImage = async (sale: Sale, settings: Settings) => {
   ctx.fillText("TOTAL GERAL:", 30, y);
   ctx.textAlign = "right";
   ctx.fillText(`R$ ${sale.total.toFixed(2)}`, width - 30, y);
-  y += 50;
+  y += 45;
+
+  // EXIBIÇÃO DE VALOR RECEBIDO E TROCO
+  if (sale.paymentMethod === 'dinheiro') {
+    ctx.font = "bold 18px Inter, Helvetica, Arial";
+    ctx.textAlign = "left";
+    ctx.fillText("VALOR RECEBIDO:", 30, y);
+    ctx.textAlign = "right";
+    ctx.fillText(`R$ ${(sale.amountPaid || 0).toFixed(2)}`, width - 30, y);
+    y += 30;
+    
+    ctx.font = "bold 20px Inter, Helvetica, Arial";
+    ctx.fillStyle = "#15803d"; // Green-700
+    ctx.textAlign = "left";
+    ctx.fillText("TROCO:", 30, y);
+    ctx.textAlign = "right";
+    ctx.fillText(`R$ ${(sale.change || 0).toFixed(2)}`, width - 30, y);
+    ctx.fillStyle = "#000000";
+    y += 50;
+  } else {
+    y += 20;
+  }
 
   ctx.textAlign = "center";
   ctx.font = "bold 18px Inter, Helvetica, Arial";

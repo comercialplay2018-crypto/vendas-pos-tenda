@@ -30,10 +30,10 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'produ
 
       oscillator.type = 'sine';
       oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // Frequência do bipe
-      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // Volume baixo
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); 
 
       oscillator.start();
-      oscillator.stop(audioCtx.currentTime + 0.1); // Duração curta
+      oscillator.stop(audioCtx.currentTime + 0.1); 
     } catch (e) {
       console.warn("Navegador bloqueou áudio do bipe.");
     }

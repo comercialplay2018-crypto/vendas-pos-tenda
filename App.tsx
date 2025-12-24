@@ -13,7 +13,7 @@ import { Scanner } from './components/Scanner';
 import { generateLabelPDF, generateReceiptImage, generateAllLabelsPDF, generateLoginCardPDF } from './utils/pdfUtils';
 import { GoogleGenAI } from "@google/genai";
 
-const APP_VERSION = "3.3.7-PRODUCTION";
+const APP_VERSION = "3.3.9-PRODUCTION";
 const ADMIN_QR_KEY = "TENDA-JL-ADMIN-2025"; 
 
 const MASTER_ADMIN_USER = "ADMIN";
@@ -60,7 +60,7 @@ const App: React.FC = () => {
   const [amountReceived, setAmountReceived] = useState<string>('');
   const [installmentCount, setInstallmentCount] = useState<number>(1);
 
-  // ESTADOS PARA TELA DE SUCESSO PÓS-VENDA
+  // ESTADO PARA TELA DE SUCESSO PÓS-VENDA
   const [finishedSaleData, setFinishedSaleData] = useState<Sale | null>(null);
 
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -213,10 +213,10 @@ const App: React.FC = () => {
 
       const saleId = await dbService.saveSale(saleData);
       
-      // EM VEZ DE BAIXAR AUTOMÁTICO, SETAMOS OS DADOS PARA O MODAL DE SUCESSO
+      // EXIBIR TELA DE SUCESSO EM VEZ DE BAIXAR AUTOMÁTICO
       setFinishedSaleData({ ...saleData, id: saleId } as Sale);
       
-      // RESETAR ESTADOS DO PDV PARA NOVA VENDA
+      // RESETAR PDV
       setCart([]); 
       setSelectedCustomer(null); 
       setPaymentMethod('pix'); 
@@ -497,14 +497,14 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* MODAL DE SUCESSO PÓS-VENDA */}
+        {/* MODAL DE SUCESSO PÓS-VENDA - COM OPÇÃO DE NOVA VENDA E COMPARTILHAR */}
         {finishedSaleData && (
           <div className="fixed inset-0 z-[1000] bg-orange-600/95 flex items-center justify-center p-4 backdrop-blur-md">
             <div className="bg-white w-full max-w-lg rounded-[3.5rem] p-12 shadow-3xl flex flex-col items-center text-center animate-in zoom-in duration-300">
               <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
                 <CheckCircle2 size={64} />
               </div>
-              <h2 className="text-3xl font-black text-gray-800 tracking-tighter mb-2 uppercase">Venda Concluída!</h2>
+              <h2 className="text-3xl font-black text-gray-800 tracking-tighter mb-2 uppercase">Venda Realizada!</h2>
               <p className="text-gray-400 font-bold mb-10">O que deseja fazer agora?</p>
               
               <div className="grid grid-cols-1 gap-4 w-full">
@@ -512,7 +512,7 @@ const App: React.FC = () => {
                   onClick={() => generateReceiptImage(finishedSaleData, settings)}
                   className="w-full py-6 bg-orange-600 text-white rounded-3xl font-black text-lg shadow-xl flex items-center justify-center gap-3 hover:scale-[1.02] transition-all"
                 >
-                  <Share2 size={24}/> COMPARTILHAR COMPROVANTE
+                  <Share2 size={24}/> COMPARTILHAR / BAIXAR COMPROVANTE
                 </button>
                 <button 
                   onClick={() => setFinishedSaleData(null)}
@@ -521,7 +521,7 @@ const App: React.FC = () => {
                   NOVA VENDA <ArrowRight size={24}/>
                 </button>
               </div>
-              <p className="mt-8 text-[10px] font-black text-gray-300 uppercase tracking-widest">Pedido #{finishedSaleData.id.substring(0,8).toUpperCase()}</p>
+              <p className="mt-8 text-[10px] font-black text-gray-300 uppercase tracking-widest">PEDIDO: #{finishedSaleData.id.substring(0,8).toUpperCase()}</p>
             </div>
           </div>
         )}
