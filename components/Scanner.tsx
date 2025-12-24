@@ -18,12 +18,31 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'produ
   const isAdmin = mode === 'admin';
   const isLogin = mode === 'login';
 
+  // SINTETIZADOR DE BIPE
+  const playBeep = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // Frequência do bipe
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // Volume baixo
+
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.1); // Duração curta
+    } catch (e) {
+      console.warn("Navegador bloqueou áudio do bipe.");
+    }
+  };
+
   useEffect(() => {
-    // Aumentamos levemente o delay para garantir que o contêiner DOM esteja 100% montado no DOM
     const initTimer = setTimeout(() => {
       const startScanner = async () => {
         try {
-          // Destrói instância anterior se existir
           if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
             await html5QrCodeRef.current.stop();
           }
@@ -32,7 +51,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'produ
           html5QrCodeRef.current = html5QrCode;
 
           const config = { 
-            fps: 20, // Aumentado FPS para maior fluidez
+            fps: 20, 
             qrbox: { width: 250, height: 250 },
             aspectRatio: 1.0 
           };
@@ -41,9 +60,10 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'produ
             { facingMode: "environment" }, 
             config, 
             (decodedText) => {
+              playBeep(); // BIP AO DETECTAR
               onScan(decodedText);
             },
-            () => { /* Ignora erros de frame individual */ }
+            () => { /* Ignora frames vazios */ }
           );
           setIsInitializing(false);
         } catch (err: any) {
@@ -54,7 +74,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'produ
       };
 
       startScanner();
-    }, 250); // Delay mais conservador para evitar race condition de DOM
+    }, 250);
 
     return () => {
       clearTimeout(initTimer);
@@ -62,7 +82,6 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'produ
         if (html5QrCodeRef.current.isScanning) {
           html5QrCodeRef.current.stop().catch(console.warn);
         }
-        // Tentamos limpar o conteúdo do reader para liberar recursos
         const readerElement = document.getElementById(scannerId);
         if (readerElement) readerElement.innerHTML = "";
       }

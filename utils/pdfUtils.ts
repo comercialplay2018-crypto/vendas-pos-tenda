@@ -117,16 +117,15 @@ export const generateAllLabelsPDF = async (products: Product[]) => {
 export const generateReceiptImage = async (sale: Sale, settings: Settings) => {
   const width = 450;
   
-  // Cálculo de altura dinâmica mais robusto para evitar cortes
-  let dynamicHeight = 350; // Cabeçalho + Dados Iniciais + Margens base
+  let dynamicHeight = 350; 
   if (settings.logoUrl) dynamicHeight += 150;
-  dynamicHeight += sale.items.length * 60; // Espaço por item
-  dynamicHeight += 250; // Totais + Forma de Pagamento
+  dynamicHeight += sale.items.length * 80; 
+  dynamicHeight += 300; 
   if (sale.installments) dynamicHeight += (sale.installments.length * 30) + 100;
   if (settings.pixQrUrl && (sale.paymentMethod === 'pix' || sale.paymentMethod === 'crediario')) {
-    dynamicHeight += 350; // Área do QR Code Pix
+    dynamicHeight += 400; 
   }
-  dynamicHeight += 100; // Rodapé final e respiro
+  dynamicHeight += 150; 
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -134,13 +133,11 @@ export const generateReceiptImage = async (sale: Sale, settings: Settings) => {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  // Fundo Branco Sólido
   ctx.fillStyle = "#FFFFFF";
   ctx.fillRect(0, 0, width, dynamicHeight);
 
   let y = 40;
 
-  // Logo
   if (settings.logoUrl) {
     const logo = await loadImage(settings.logoUrl);
     if (logo) {
@@ -151,7 +148,6 @@ export const generateReceiptImage = async (sale: Sale, settings: Settings) => {
     }
   }
 
-  // Título Empresa
   ctx.fillStyle = "#000000";
   ctx.font = "900 26px Inter, Helvetica, Arial";
   ctx.textAlign = "center";
@@ -162,7 +158,6 @@ export const generateReceiptImage = async (sale: Sale, settings: Settings) => {
   ctx.fillText("COMPROVANTE DE VENDA", width / 2, y);
   y += 50;
 
-  // Dados do Pedido
   ctx.textAlign = "left";
   ctx.font = "14px Inter, Helvetica, Arial";
   const date = new Date(sale.timestamp);
@@ -180,7 +175,6 @@ export const generateReceiptImage = async (sale: Sale, settings: Settings) => {
     y += 30;
   }
 
-  // Linha divisória tracejada
   y += 10;
   ctx.beginPath();
   ctx.setLineDash([5, 5]);
@@ -190,7 +184,6 @@ export const generateReceiptImage = async (sale: Sale, settings: Settings) => {
   ctx.stroke();
   y += 40;
 
-  // Cabeçalho dos Itens
   ctx.font = "bold 15px Inter, Helvetica, Arial";
   ctx.textAlign = "left";
   ctx.fillText("DESCRIÇÃO", 30, y);
@@ -199,24 +192,33 @@ export const generateReceiptImage = async (sale: Sale, settings: Settings) => {
   ctx.fillText("TOTAL", width - 30, y);
   y += 30;
 
-  // Lista de Itens
-  ctx.font = "14px Inter, Helvetica, Arial";
   ctx.setLineDash([]);
   sale.items.forEach(item => {
     ctx.textAlign = "left";
     const lineTotal = (item.price - item.discount) * item.quantity;
     ctx.font = "bold 15px Inter, Helvetica, Arial";
+    ctx.fillStyle = "#000000";
     ctx.fillText(item.name.toUpperCase().substring(0, 28), 30, y);
     y += 20;
+    
     ctx.font = "13px Inter, Helvetica, Arial";
     ctx.fillText(`${item.quantity} un x R$ ${item.price.toFixed(2)}`, 35, y);
+    
+    // EXIBIÇÃO DE DESCONTO NO RECIBO
+    if (item.discount > 0) {
+      y += 18;
+      ctx.font = "italic bold 12px Inter, Helvetica, Arial";
+      ctx.fillStyle = "#e11d48"; // Rose-600
+      ctx.fillText(`DESCONTO APLICADO: - R$ ${item.discount.toFixed(2)}`, 35, y);
+      ctx.fillStyle = "#000000";
+    }
+
     ctx.textAlign = "right";
     ctx.font = "bold 15px Inter, Helvetica, Arial";
     ctx.fillText(`R$ ${lineTotal.toFixed(2)}`, width - 30, y);
     y += 35;
   });
 
-  // Linha de Totais
   y += 10;
   ctx.beginPath();
   ctx.setLineDash([5, 5]);
@@ -252,7 +254,6 @@ export const generateReceiptImage = async (sale: Sale, settings: Settings) => {
   ctx.fillText(`FORMA DE PGTO: ${sale.paymentMethod.toUpperCase()}`, width / 2, y);
   y += 50;
 
-  // Parcelas do Crediário
   if (sale.installments && sale.installments.length > 0) {
     ctx.font = "bold 15px Inter, Helvetica, Arial";
     ctx.fillText("PROGRAMAÇÃO DE PARCELAS", width / 2, y);
@@ -268,7 +269,6 @@ export const generateReceiptImage = async (sale: Sale, settings: Settings) => {
     y += 20;
   }
 
-  // QR Code Pix para Pagamento
   if (settings.pixQrUrl && (sale.paymentMethod === 'pix' || sale.paymentMethod === 'crediario')) {
     const pix = await loadImage(settings.pixQrUrl);
     if (pix) {
@@ -281,7 +281,6 @@ export const generateReceiptImage = async (sale: Sale, settings: Settings) => {
     }
   }
 
-  // Rodapé e Mensagem Final
   ctx.textAlign = "center";
   ctx.font = "italic 13px Inter, Helvetica, Arial";
   ctx.fillText("ESTE NÃO É UM DOCUMENTO FISCAL", width / 2, y);
@@ -289,7 +288,6 @@ export const generateReceiptImage = async (sale: Sale, settings: Settings) => {
   ctx.font = "bold 14px Inter, Helvetica, Arial";
   ctx.fillText("OBRIGADO PELA PREFERÊNCIA!", width / 2, y);
 
-  // Download da imagem PNG
   const link = document.createElement('a');
   link.download = `recibo-tenda-jl-${sale.id.substring(0, 8)}.png`;
   link.href = canvas.toDataURL('image/png', 1.0);

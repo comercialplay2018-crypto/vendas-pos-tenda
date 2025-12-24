@@ -5,7 +5,7 @@ import {
   LogOut, Plus, Search, Trash2, Edit3, Camera, Download, X, Loader2, 
   ShoppingBag, Printer, TrendingUp, Filter, BarChart3, Tent, Sparkles, Calendar,
   CreditCard, CheckCircle2, Clock, Ban, ShieldCheck, ShieldAlert, UserPlus, Fingerprint,
-  QrCode, ScanLine
+  QrCode, ScanLine, Share2, ArrowRight
 } from 'lucide-react';
 import { dbService, UserWithPin } from './services/dbService';
 import { Product, Customer, Sale, User, Settings as SettingsType, PaymentMethod, Installment } from './types';
@@ -13,7 +13,7 @@ import { Scanner } from './components/Scanner';
 import { generateLabelPDF, generateReceiptImage, generateAllLabelsPDF, generateLoginCardPDF } from './utils/pdfUtils';
 import { GoogleGenAI } from "@google/genai";
 
-const APP_VERSION = "3.3.6-PRODUCTION";
+const APP_VERSION = "3.3.7-PRODUCTION";
 const ADMIN_QR_KEY = "TENDA-JL-ADMIN-2025"; 
 
 const MASTER_ADMIN_USER = "ADMIN";
@@ -59,6 +59,9 @@ const App: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix');
   const [amountReceived, setAmountReceived] = useState<string>('');
   const [installmentCount, setInstallmentCount] = useState<number>(1);
+
+  // ESTADOS PARA TELA DE SUCESSO PÓS-VENDA
+  const [finishedSaleData, setFinishedSaleData] = useState<Sale | null>(null);
 
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -164,7 +167,7 @@ const App: React.FC = () => {
     }
   };
 
-  const finishSale = async (printReceipt = true) => {
+  const finishSale = async () => {
     if (isFinishing || cart.length === 0 || !currentUser) return;
     
     const total = calculateTotal();
@@ -209,16 +212,16 @@ const App: React.FC = () => {
       }
 
       const saleId = await dbService.saveSale(saleData);
-      if (printReceipt) {
-        generateReceiptImage({ ...saleData, id: saleId } as Sale, settings).catch(() => {});
-      }
       
+      // EM VEZ DE BAIXAR AUTOMÁTICO, SETAMOS OS DADOS PARA O MODAL DE SUCESSO
+      setFinishedSaleData({ ...saleData, id: saleId } as Sale);
+      
+      // RESETAR ESTADOS DO PDV PARA NOVA VENDA
       setCart([]); 
       setSelectedCustomer(null); 
       setPaymentMethod('pix'); 
       setAmountReceived('');
       setInstallmentCount(1);
-      alert("Venda Concluída!");
     } catch (e: any) {
       alert("Erro: " + e.message);
     } finally {
@@ -483,13 +486,42 @@ const App: React.FC = () => {
                   </div>
                 </div>
                 <button 
-                  onClick={() => finishSale(true)} 
+                  onClick={finishSale} 
                   disabled={isFinishing || cart.length === 0} 
                   className="w-full py-8 bg-gradient-to-r from-orange-600 to-rose-500 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl hover:scale-[1.03] active:scale-95 transition-all flex justify-center items-center gap-3 disabled:opacity-50"
                 >
                   {isFinishing ? <Loader2 className="animate-spin" size={32}/> : "FINALIZAR VENDA"}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL DE SUCESSO PÓS-VENDA */}
+        {finishedSaleData && (
+          <div className="fixed inset-0 z-[1000] bg-orange-600/95 flex items-center justify-center p-4 backdrop-blur-md">
+            <div className="bg-white w-full max-w-lg rounded-[3.5rem] p-12 shadow-3xl flex flex-col items-center text-center animate-in zoom-in duration-300">
+              <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
+                <CheckCircle2 size={64} />
+              </div>
+              <h2 className="text-3xl font-black text-gray-800 tracking-tighter mb-2 uppercase">Venda Concluída!</h2>
+              <p className="text-gray-400 font-bold mb-10">O que deseja fazer agora?</p>
+              
+              <div className="grid grid-cols-1 gap-4 w-full">
+                <button 
+                  onClick={() => generateReceiptImage(finishedSaleData, settings)}
+                  className="w-full py-6 bg-orange-600 text-white rounded-3xl font-black text-lg shadow-xl flex items-center justify-center gap-3 hover:scale-[1.02] transition-all"
+                >
+                  <Share2 size={24}/> COMPARTILHAR COMPROVANTE
+                </button>
+                <button 
+                  onClick={() => setFinishedSaleData(null)}
+                  className="w-full py-6 bg-gray-50 text-gray-500 rounded-3xl font-black text-lg border-2 border-transparent hover:border-orange-100 flex items-center justify-center gap-3 transition-all"
+                >
+                  NOVA VENDA <ArrowRight size={24}/>
+                </button>
+              </div>
+              <p className="mt-8 text-[10px] font-black text-gray-300 uppercase tracking-widest">Pedido #{finishedSaleData.id.substring(0,8).toUpperCase()}</p>
             </div>
           </div>
         )}
