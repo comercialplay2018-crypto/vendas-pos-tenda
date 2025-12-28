@@ -5,7 +5,7 @@ import {
   LogOut, Plus, Search, Trash2, Edit3, Camera, Download, X, Loader2, 
   ShoppingBag, Printer, TrendingUp, Filter, BarChart3, Tent, Sparkles, Calendar,
   CreditCard, CheckCircle2, Clock, Ban, ShieldCheck, ShieldAlert, UserPlus, Fingerprint,
-  QrCode, ScanLine, Share2, ArrowRight
+  QrCode, ScanLine, Share2, ArrowRight, UserSearch
 } from 'lucide-react';
 import { dbService, UserWithPin } from './services/dbService';
 import { Product, Customer, Sale, User, Settings as SettingsType, PaymentMethod, Installment } from './types';
@@ -13,7 +13,7 @@ import { Scanner } from './components/Scanner';
 import { generateLabelPDF, generateReceiptImage, generateAllLabelsPDF, generateLoginCardPDF } from './utils/pdfUtils';
 import { GoogleGenAI } from "@google/genai";
 
-const APP_VERSION = "3.3.9-PRODUCTION";
+const APP_VERSION = "3.4.0-PRODUCTION";
 const ADMIN_QR_KEY = "TENDA-JL-ADMIN-2025"; 
 
 const MASTER_ADMIN_USER = "ADMIN";
@@ -54,13 +54,16 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Product[]>([]);
 
+  // PESQUISA DE CLIENTE NO PDV
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [showCustomerResults, setShowCustomerResults] = useState(false);
+
   const [cart, setCart] = useState<{ product: Product; qty: number; discount: number }[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix');
   const [amountReceived, setAmountReceived] = useState<string>('');
   const [installmentCount, setInstallmentCount] = useState<number>(1);
 
-  // ESTADO PARA TELA DE SUCESSO PÓS-VENDA
   const [finishedSaleData, setFinishedSaleData] = useState<Sale | null>(null);
 
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -93,6 +96,14 @@ const App: React.FC = () => {
       setSearchResults([]);
     }
   }, [searchQuery, products]);
+
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearchQuery.trim()) return [];
+    return customers.filter(c => 
+      c.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+      (c.contact && c.contact.includes(customerSearchQuery))
+    );
+  }, [customers, customerSearchQuery]);
 
   const dailyEarnings = useMemo(() => {
     const today = new Date().toLocaleDateString();
@@ -213,12 +224,11 @@ const App: React.FC = () => {
 
       const saleId = await dbService.saveSale(saleData);
       
-      // EXIBIR TELA DE SUCESSO EM VEZ DE BAIXAR AUTOMÁTICO
       setFinishedSaleData({ ...saleData, id: saleId } as Sale);
       
-      // RESETAR PDV
       setCart([]); 
       setSelectedCustomer(null); 
+      setCustomerSearchQuery('');
       setPaymentMethod('pix'); 
       setAmountReceived('');
       setInstallmentCount(1);
@@ -368,7 +378,7 @@ const App: React.FC = () => {
               <div className="relative z-[60]">
                 <div className="flex gap-4 items-center bg-white p-6 rounded-[2.5rem] shadow-2xl border-2 border-transparent focus-within:border-orange-600 transition-all">
                   <Search className="text-gray-300 ml-2" size={28} />
-                  <input type="text" placeholder="Buscar por nome ou código..." className="flex-1 p-2 outline-none font-bold text-lg" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                  <input type="text" placeholder="Buscar produto..." className="flex-1 p-2 outline-none font-bold text-lg" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                   <button onClick={() => { setScannerMode('product'); setIsScannerOpen(true); }} className="p-5 bg-gradient-to-tr from-orange-600 to-rose-500 text-white rounded-2xl shadow-lg"><Camera size={28}/></button>
                 </div>
                 {searchResults.length > 0 && (
@@ -433,15 +443,72 @@ const App: React.FC = () => {
 
             <div className="lg:col-span-4">
               <div className="bg-white p-10 rounded-[3rem] shadow-2xl space-y-8 border-2 border-orange-50 sticky top-10">
-                <h2 className="font-black text-2xl flex items-center gap-3"><ShoppingBag className="text-orange-600" size={32}/> Finalizar</h2>
+                <h2 className="font-black text-2xl flex items-center gap-3"><ShoppingBag className="text-orange-600" size={32}/> Checkout</h2>
                 <div className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-black text-gray-400 uppercase ml-2">Cliente</label>
-                    <select className="w-full p-5 bg-gray-50 rounded-2xl font-black outline-none border-2 border-transparent focus:border-orange-600" value={selectedCustomer?.id || ''} onChange={(e) => setSelectedCustomer(customers.find(c => c.id === e.target.value) || null)}>
-                      <option value="">Consumidor Final</option>
-                      {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                  
+                  {/* BARRA DE PESQUISA DE CLIENTE NO PDV */}
+                  <div className="space-y-2 relative">
+                    <label className="text-[11px] font-black text-gray-400 uppercase ml-2">Buscar Cliente</label>
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        placeholder={selectedCustomer ? selectedCustomer.name : "Consumidor Final"}
+                        className={`w-full p-5 pr-12 bg-gray-50 rounded-2xl font-black outline-none border-2 transition-all ${selectedCustomer ? 'border-orange-600 text-orange-700' : 'border-transparent focus:border-orange-600'}`}
+                        value={customerSearchQuery}
+                        onChange={(e) => {
+                          setCustomerSearchQuery(e.target.value);
+                          setShowCustomerResults(true);
+                        }}
+                        onFocus={() => setShowCustomerResults(true)}
+                      />
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300">
+                        <UserSearch size={22} />
+                      </div>
+                    </div>
+
+                    {showCustomerResults && customerSearchQuery.trim() !== '' && (
+                      <div className="absolute top-full left-0 right-0 bg-white rounded-2xl shadow-2xl border-2 border-orange-100 mt-2 z-[200] max-h-60 overflow-y-auto overflow-x-hidden">
+                        {filteredCustomers.length > 0 ? filteredCustomers.map(c => (
+                          <button 
+                            key={c.id} 
+                            onClick={() => {
+                              setSelectedCustomer(c);
+                              setCustomerSearchQuery('');
+                              setShowCustomerResults(false);
+                            }}
+                            className="w-full p-4 text-left hover:bg-orange-50 border-b last:border-0 flex items-center gap-3"
+                          >
+                            <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 text-xs font-black">{c.name[0]}</div>
+                            <div>
+                              <p className="font-black text-sm text-gray-800">{c.name}</p>
+                              {c.contact && <p className="text-[10px] text-gray-400 font-bold">{c.contact}</p>}
+                            </div>
+                          </button>
+                        )) : (
+                          <div className="p-4 text-center text-xs font-bold text-gray-400 italic">Nenhum cliente encontrado</div>
+                        )}
+                        <button 
+                          onClick={() => {
+                            setSelectedCustomer(null);
+                            setCustomerSearchQuery('');
+                            setShowCustomerResults(false);
+                          }}
+                          className="w-full p-4 text-center bg-gray-50 text-rose-500 font-black text-xs uppercase"
+                        >
+                          Limpar / Consumidor Final
+                        </button>
+                      </div>
+                    )}
+                    {selectedCustomer && (
+                       <button 
+                        onClick={() => { setSelectedCustomer(null); setCustomerSearchQuery(''); }}
+                        className="text-[10px] font-black text-rose-500 uppercase flex items-center gap-1 mt-1 ml-2"
+                       >
+                         <X size={12}/> Remover Seleção
+                       </button>
+                    )}
                   </div>
+
                   <div className="space-y-2">
                     <label className="text-[11px] font-black text-gray-400 uppercase ml-2">Pagamento</label>
                     <select className="w-full p-5 bg-gray-50 rounded-2xl font-black outline-none border-2 border-transparent focus:border-orange-600" value={paymentMethod} onChange={(e) => { setPaymentMethod(e.target.value as PaymentMethod); setAmountReceived(''); }}>
@@ -497,7 +564,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* MODAL DE SUCESSO PÓS-VENDA - COM OPÇÃO DE NOVA VENDA E COMPARTILHAR */}
+        {/* MODAL DE SUCESSO PÓS-VENDA */}
         {finishedSaleData && (
           <div className="fixed inset-0 z-[1000] bg-orange-600/95 flex items-center justify-center p-4 backdrop-blur-md">
             <div className="bg-white w-full max-w-lg rounded-[3.5rem] p-12 shadow-3xl flex flex-col items-center text-center animate-in zoom-in duration-300">
@@ -956,28 +1023,68 @@ const InventoryView = ({ products, onSave, onDelete, onEdit, isModalOpen, setIsM
 
 const CustomersView = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIsModalOpen, editingCustomer }: any) => {
   const [formData, setFormData] = useState({ name: '', contact: '' });
+  const [search, setSearch] = useState('');
+
   useEffect(() => {
     if (editingCustomer) setFormData({ name: editingCustomer.name, contact: editingCustomer.contact });
     else setFormData({ name: '', contact: '' });
   }, [editingCustomer, isModalOpen]);
+
+  const filtered = useMemo(() => {
+    return customers.filter((c: any) => 
+      c.name.toLowerCase().includes(search.toLowerCase()) || 
+      (c.contact && c.contact.includes(search))
+    );
+  }, [customers, search]);
+
   const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave(formData); setIsModalOpen(false); };
+
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center"><div><h1 className="text-3xl font-black text-gray-800 tracking-tighter">Clientes</h1></div><button onClick={onAddNew} className="bg-rose-500 text-white px-8 py-4 rounded-[2rem] font-black shadow-xl flex items-center gap-2"><Plus size={20}/> CADASTRAR CLIENTE</button></div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {customers.map((c: any) => (
-          <div key={c.id} className="bg-white p-6 rounded-[2.5rem] shadow-lg border flex items-center justify-between hover:border-orange-200 transition-all">
-            <div className="flex items-center gap-4"><div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center font-black text-xl">{c.name[0]}</div><div><h3 className="font-black text-gray-800">{c.name}</h3><p className="text-[10px] text-gray-400 font-bold">{c.contact || 'S/ CONTATO'}</p></div></div>
-            <button onClick={() => onEdit(c)} className="p-3 text-gray-300 hover:text-orange-600 transition-colors"><Edit3 size={20}/></button>
-          </div>
-        ))}
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div><h1 className="text-3xl font-black text-gray-800 tracking-tighter">Clientes</h1><p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Base de Clientes Cadastrados</p></div>
+        <button onClick={onAddNew} className="bg-rose-500 text-white px-8 py-4 rounded-[2rem] font-black shadow-xl flex items-center justify-center gap-2 hover:scale-105 transition-all"><Plus size={20}/> NOVO CLIENTE</button>
       </div>
+
+      <div className="bg-white p-6 rounded-[2.5rem] shadow-xl border flex items-center gap-4 focus-within:border-orange-600 transition-all">
+        <Search className="text-gray-300" />
+        <input 
+          type="text" 
+          placeholder="Pesquisar cliente por nome ou telefone..." 
+          className="flex-1 font-bold outline-none text-lg" 
+          value={search} 
+          onChange={(e) => setSearch(e.target.value)} 
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filtered.length > 0 ? filtered.map((c: any) => (
+          <div key={c.id} className="bg-white p-7 rounded-[2.5rem] shadow-lg border-2 border-gray-50 flex items-center justify-between hover:border-orange-200 transition-all group">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-gradient-to-tr from-orange-100 to-rose-50 text-orange-600 rounded-2xl flex items-center justify-center font-black text-2xl shadow-inner">{c.name[0].toUpperCase()}</div>
+              <div>
+                <h3 className="font-black text-gray-800 text-lg leading-tight">{c.name}</h3>
+                <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-1">{c.contact || 'S/ CONTATO'}</p>
+              </div>
+            </div>
+            <button onClick={() => onEdit(c)} className="p-4 text-gray-300 group-hover:text-orange-600 bg-gray-50 group-hover:bg-orange-50 rounded-2xl transition-all border border-transparent group-hover:border-orange-100"><Edit3 size={20}/></button>
+          </div>
+        )) : (
+          <div className="col-span-full py-20 text-center opacity-30 italic font-bold">Nenhum cliente localizado com os termos acima.</div>
+        )}
+      </div>
+
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-md rounded-[3rem] p-10 shadow-3xl">
-            <h2 className="text-2xl font-black mb-8">Novo Cliente</h2>
+          <div className="bg-white w-full max-w-md rounded-[3rem] p-10 shadow-3xl">
+            <h2 className="text-2xl font-black mb-8">{editingCustomer ? 'Editar' : 'Novo'} Cliente</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <input required placeholder="NOME COMPLETO" className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-rose-500 outline-none" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} /><input placeholder="TELEFONE (WhatsApp)" className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-rose-500 outline-none" value={formData.contact} onChange={e=>setFormData({...formData, contact: e.target.value})} /><button type="submit" className="w-full py-4 bg-rose-500 text-white rounded-2xl font-black mt-6 shadow-xl">SALVAR CLIENTE</button><button type="button" onClick={()=>setIsModalOpen(false)} className="w-full py-2 font-black text-gray-400">VOLTAR</button>
+              <input required placeholder="NOME COMPLETO" className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-rose-500 outline-none" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} />
+              <input placeholder="TELEFONE (WhatsApp)" className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-rose-500 outline-none" value={formData.contact} onChange={e=>setFormData({...formData, contact: e.target.value})} />
+              <div className="flex gap-4 mt-8">
+                <button type="button" onClick={()=>setIsModalOpen(false)} className="flex-1 py-4 font-black text-gray-400">VOLTAR</button>
+                <button type="submit" className="flex-1 py-4 bg-rose-500 text-white rounded-2xl font-black shadow-xl">SALVAR</button>
+              </div>
             </form>
           </div>
         </div>
