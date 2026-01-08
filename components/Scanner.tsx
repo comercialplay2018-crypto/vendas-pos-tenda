@@ -1,12 +1,12 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode } from "html5-qrcode";
-import { X, RefreshCw, ShieldCheck, ShieldAlert, Fingerprint, KeyRound } from 'lucide-react';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import { X, RefreshCw, ShieldCheck, ShieldAlert, Fingerprint, KeyRound, ScanBarcode } from 'lucide-react';
 
 interface ScannerProps {
   onScan: (code: string) => void;
   onClose: () => void;
-  mode?: 'product' | 'admin' | 'login';
+  mode?: 'product' | 'admin' | 'login' | 'inventory';
 }
 
 export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'product' }) => {
@@ -17,6 +17,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'produ
 
   const isAdmin = mode === 'admin';
   const isLogin = mode === 'login';
+  const isInventory = mode === 'inventory';
 
   // SINTETIZADOR DE BIPE
   const playBeep = () => {
@@ -29,7 +30,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'produ
       gainNode.connect(audioCtx.destination);
 
       oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // Frequência do bipe
+      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); 
       gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); 
 
       oscillator.start();
@@ -50,10 +51,19 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'produ
           const html5QrCode = new Html5Qrcode(scannerId);
           html5QrCodeRef.current = html5QrCode;
 
+          // Configurado para suportar QR e Barcodes comuns
           const config = { 
             fps: 20, 
             qrbox: { width: 250, height: 250 },
-            aspectRatio: 1.0 
+            aspectRatio: 1.0,
+            formatsToSupport: [
+              Html5QrcodeSupportedFormats.QR_CODE,
+              Html5QrcodeSupportedFormats.EAN_13,
+              Html5QrcodeSupportedFormats.EAN_8,
+              Html5QrcodeSupportedFormats.CODE_128,
+              Html5QrcodeSupportedFormats.UPC_A,
+              Html5QrcodeSupportedFormats.UPC_E
+            ]
           };
 
           await html5QrCode.start(
@@ -103,12 +113,14 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'produ
   const getThemeColors = () => {
     if (isAdmin) return 'bg-rose-950/90 border-rose-500 text-rose-500';
     if (isLogin) return 'bg-orange-950/90 border-orange-500 text-orange-500';
+    if (isInventory) return 'bg-blue-950/90 border-blue-500 text-blue-500';
     return 'bg-black border-pink-500 text-pink-500';
   };
 
   const getHeaderIcon = () => {
     if (isAdmin) return <ShieldAlert className="text-rose-500 animate-pulse" size={24}/>;
     if (isLogin) return <KeyRound className="text-orange-500 animate-bounce" size={24}/>;
+    if (isInventory) return <ScanBarcode className="text-blue-500 animate-pulse" size={24}/>;
     return <ShieldCheck className="text-green-500" size={24}/>;
   };
 
@@ -121,11 +133,11 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'produ
             <div className="flex items-center gap-2">
               {getHeaderIcon()}
               <h2 className="font-black text-lg tracking-tight uppercase">
-                {isLogin ? 'ACESSO RÁPIDO' : isAdmin ? 'AUTORIZAÇÃO REQUERIDA' : 'SCANNER DE PRODUTOS'}
+                {isLogin ? 'ACESSO RÁPIDO' : isAdmin ? 'AUTORIZAÇÃO REQUERIDA' : isInventory ? 'ENTRADA DE ESTOQUE' : 'SCANNER DE PRODUTOS'}
               </h2>
             </div>
             <p className="text-[10px] uppercase font-bold text-white/70">
-              {isLogin ? 'Escaneie seu crachá para entrar' : isAdmin ? 'Aproxime o Cartão do Administrador' : 'Aponte para o código de barras'}
+              {isLogin ? 'Escaneie seu crachá' : isAdmin ? 'Autorização administrativa' : 'QR Code ou Código de Barras'}
             </p>
           </div>
           <button 
@@ -171,13 +183,10 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose, mode = 'produ
           )}
         </div>
 
-        <div className={`p-6 ${isLogin ? 'bg-orange-900' : isAdmin ? 'bg-rose-900' : 'bg-black/80'} text-center`}>
-          <div className="flex items-center justify-center gap-2">
-            {isLogin && <Fingerprint size={16} className="text-orange-300 animate-pulse"/>}
-            <p className="text-white text-[11px] font-black uppercase tracking-widest">
-              {isLogin ? 'RECONHECIMENTO DE CRACHÁ' : isAdmin ? 'ESTORNO PROTEGIDO - TENDA JL' : 'SISTEMA DE LEITURA INTELIGENTE'}
-            </p>
-          </div>
+        <div className={`p-6 ${isLogin ? 'bg-orange-900' : isAdmin ? 'bg-rose-900' : isInventory ? 'bg-blue-900' : 'bg-black/80'} text-center`}>
+          <p className="text-white text-[11px] font-black uppercase tracking-widest">
+            {isLogin ? 'RECONHECIMENTO DE CRACHÁ' : isAdmin ? 'ESTORNO PROTEGIDO - TENDA JL' : 'SISTEMA DE LEITURA INTELIGENTE'}
+          </p>
         </div>
       </div>
     </div>

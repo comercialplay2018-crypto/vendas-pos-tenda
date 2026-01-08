@@ -5,7 +5,7 @@ import {
   LogOut, Plus, Search, Trash2, Edit3, Camera, Download, X, Loader2, 
   ShoppingBag, Printer, TrendingUp, Filter, BarChart3, Tent, Sparkles, Calendar,
   CreditCard, CheckCircle2, Clock, Ban, ShieldCheck, ShieldAlert, UserPlus, Fingerprint,
-  QrCode, ScanLine, Share2, ArrowRight, UserSearch
+  QrCode, ScanLine, Share2, ArrowRight, UserSearch, Wallet, TrendingDown, Landmark, ScanBarcode
 } from 'lucide-react';
 import { dbService, UserWithPin } from './services/dbService';
 import { Product, Customer, Sale, User, Settings as SettingsType, PaymentMethod, Installment } from './types';
@@ -13,7 +13,7 @@ import { Scanner } from './components/Scanner';
 import { generateLabelPDF, generateReceiptImage, generateAllLabelsPDF, generateLoginCardPDF } from './utils/pdfUtils';
 import { GoogleGenAI } from "@google/genai";
 
-const APP_VERSION = "3.4.0-PRODUCTION";
+const APP_VERSION = "3.6.0-PRODUCTION";
 const ADMIN_QR_KEY = "TENDA-JL-ADMIN-2025"; 
 
 const MASTER_ADMIN_USER = "ADMIN";
@@ -41,20 +41,19 @@ const App: React.FC = () => {
   const [loginData, setLoginData] = useState({ username: '', pin: '' });
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'pos' | 'inventory' | 'customers' | 'sales' | 'settings' | 'crediario' | 'team' | 'reports'>('pos');
+  const [activeTab, setActiveTab] = useState<'pos' | 'inventory' | 'customers' | 'sales' | 'settings' | 'crediario' | 'team' | 'reports' | 'profit'>('pos');
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [settings, setSettings] = useState<SettingsType>({ companyName: 'Vendas Tenda JL' });
   
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [scannerMode, setScannerMode] = useState<'product' | 'admin' | 'login'>('product');
+  const [scannerMode, setScannerMode] = useState<'product' | 'admin' | 'login' | 'inventory'>('product');
   const [pendingVoidSaleId, setPendingVoidSaleId] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Product[]>([]);
 
-  // PESQUISA DE CLIENTE NO PDV
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [showCustomerResults, setShowCustomerResults] = useState(false);
 
@@ -68,6 +67,8 @@ const App: React.FC = () => {
 
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [prefilledCode, setPrefilledCode] = useState('');
+
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -175,6 +176,18 @@ const App: React.FC = () => {
       } else {
         alert("Este não é um QR Code de acesso válido.");
       }
+    } else if (scannerMode === 'inventory') {
+      const p = products.find(prod => prod.code === code);
+      setIsScannerOpen(false);
+      if (p) {
+        setEditingProduct(p);
+        setPrefilledCode('');
+        setIsProductModalOpen(true);
+      } else {
+        setEditingProduct(null);
+        setPrefilledCode(code);
+        setIsProductModalOpen(true);
+      }
     }
   };
 
@@ -223,9 +236,7 @@ const App: React.FC = () => {
       }
 
       const saleId = await dbService.saveSale(saleData);
-      
       setFinishedSaleData({ ...saleData, id: saleId } as Sale);
-      
       setCart([]); 
       setSelectedCustomer(null); 
       setCustomerSearchQuery('');
@@ -351,11 +362,11 @@ const App: React.FC = () => {
           )}
           <div className="flex flex-col gap-6 flex-1 w-full px-2">
             <NavIcon icon={<ShoppingCart size={24}/>} active={activeTab === 'pos'} onClick={() => setActiveTab('pos')} label="Caixa" />
+            <NavIcon icon={<Wallet size={24}/>} active={activeTab === 'profit'} onClick={() => setActiveTab('profit')} label="Lucros" />
             <NavIcon icon={<CreditCard size={24}/>} active={activeTab === 'crediario'} onClick={() => setActiveTab('crediario')} label="Crediário" />
-            <NavIcon icon={<BarChart3 size={24}/>} active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} label="Relatórios" />
+            <NavIcon icon={<BarChart3 size={24}/>} active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} label="Vendas" />
             <NavIcon icon={<Package size={24}/>} active={activeTab === 'inventory'} onClick={() => setActiveTab('inventory')} label="Estoque" />
             <NavIcon icon={<Users size={24}/>} active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} label="Clientes" />
-            <NavIcon icon={<History size={24}/>} active={activeTab === 'sales'} onClick={() => setActiveTab('sales')} label="Vendas" />
             {currentUser.role === 'admin' && <NavIcon icon={<UserPlus size={24}/>} active={activeTab === 'team'} onClick={() => setActiveTab('team')} label="Equipe" />}
             <NavIcon icon={<SettingsIcon size={24}/>} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} label="Config" />
           </div>
@@ -446,7 +457,6 @@ const App: React.FC = () => {
                 <h2 className="font-black text-2xl flex items-center gap-3"><ShoppingBag className="text-orange-600" size={32}/> Checkout</h2>
                 <div className="space-y-6">
                   
-                  {/* BARRA DE PESQUISA DE CLIENTE NO PDV */}
                   <div className="space-y-2 relative">
                     <label className="text-[11px] font-black text-gray-400 uppercase ml-2">Buscar Cliente</label>
                     <div className="relative">
@@ -564,7 +574,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* MODAL DE SUCESSO PÓS-VENDA */}
         {finishedSaleData && (
           <div className="fixed inset-0 z-[1000] bg-orange-600/95 flex items-center justify-center p-4 backdrop-blur-md">
             <div className="bg-white w-full max-w-lg rounded-[3.5rem] p-12 shadow-3xl flex flex-col items-center text-center animate-in zoom-in duration-300">
@@ -593,8 +602,16 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {activeTab === 'profit' && (
+          <ProfitView sales={sales} products={products} />
+        )}
+
         {activeTab === 'reports' && (
-          <ReportsView sales={sales} products={products} />
+          <ReportsView sales={sales} products={products} settings={settings} onGenerateInsights={handleGenerateInsights} isAnalyzing={isAnalyzing} onVoidAttempt={(saleId: string) => {
+            setPendingVoidSaleId(saleId);
+            setScannerMode('admin');
+            setIsScannerOpen(true);
+          }} />
         )}
 
         {activeTab === 'crediario' && (
@@ -610,12 +627,14 @@ const App: React.FC = () => {
             products={products} 
             onSave={(p: any) => editingProduct ? dbService.updateProduct(editingProduct.id, p) : dbService.saveProduct(p)} 
             onDelete={dbService.deleteProduct} 
-            onEdit={(p: Product) => { setEditingProduct(p); setIsProductModalOpen(true); }}
-            onAddNew={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
+            onEdit={(p: Product) => { setEditingProduct(p); setPrefilledCode(''); setIsProductModalOpen(true); }}
+            onAddNew={() => { setEditingProduct(null); setPrefilledCode(''); setIsProductModalOpen(true); }}
             isModalOpen={isProductModalOpen}
             setIsModalOpen={setIsProductModalOpen}
             editingProduct={editingProduct}
+            prefilledCode={prefilledCode}
             onPrintAll={() => generateAllLabelsPDF(products)}
+            onOpenScan={() => { setScannerMode('inventory'); setIsScannerOpen(true); }}
           />
         )}
         
@@ -645,30 +664,16 @@ const App: React.FC = () => {
           />
         )}
 
-        {activeTab === 'sales' && (
-          <SalesHistory 
-            sales={sales} 
-            dailyEarnings={dailyEarnings} 
-            settings={settings} 
-            onGenerateInsights={handleGenerateInsights} 
-            isAnalyzing={isAnalyzing} 
-            onVoidAttempt={(saleId: string) => {
-              setPendingVoidSaleId(saleId);
-              setScannerMode('admin');
-              setIsScannerOpen(true);
-            }}
-          />
-        )}
         {activeTab === 'settings' && <SettingsView settings={settings} onSave={dbService.saveSettings} />}
       </main>
 
       <nav className="md:hidden fixed bottom-6 left-6 right-6 bg-white/95 backdrop-blur-2xl border border-gray-200 rounded-[2.5rem] shadow-2xl flex items-center justify-around p-3 z-[60]">
         <MobileNavIcon icon={<ShoppingCart/>} label="Caixa" active={activeTab === 'pos'} onClick={() => setActiveTab('pos')} />
+        <MobileNavIcon icon={<Wallet/>} label="Lucros" active={activeTab === 'profit'} onClick={() => setActiveTab('profit')} />
         <MobileNavIcon icon={<CreditCard/>} label="Crediário" active={activeTab === 'crediario'} onClick={() => setActiveTab('crediario')} />
-        <MobileNavIcon icon={<BarChart3/>} label="Relat." active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} />
+        <MobileNavIcon icon={<History/>} label="Vendas" active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} />
         <MobileNavIcon icon={<Package/>} label="Estoque" active={activeTab === 'inventory'} onClick={() => setActiveTab('inventory')} />
         <MobileNavIcon icon={<Users/>} label="Clientes" active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} />
-        <MobileNavIcon icon={<History/>} label="Vendas" active={activeTab === 'sales'} onClick={() => setActiveTab('sales')} />
         <MobileNavIcon icon={<SettingsIcon/>} label="Menu" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
       </nav>
 
@@ -683,10 +688,10 @@ const App: React.FC = () => {
   );
 };
 
-const ReportsView = ({ sales, products }: { sales: Sale[], products: Product[] }) => {
+// --- VIEW DE LUCROS ---
+const ProfitView = ({ sales, products }: { sales: Sale[], products: Product[] }) => {
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-  const [prodSearch, setProdSearch] = useState('');
 
   const filteredSales = useMemo(() => {
     const start = new Date(startDate + 'T00:00:00').getTime();
@@ -694,94 +699,178 @@ const ReportsView = ({ sales, products }: { sales: Sale[], products: Product[] }
     return sales.filter(s => s.status === 'finalizada' && s.timestamp >= start && s.timestamp <= end);
   }, [sales, startDate, endDate]);
 
-  const stats = useMemo(() => {
+  const financialData = useMemo(() => {
     let totalRevenue = 0;
-    let totalItems = 0;
-    const productStats: Record<string, { qty: number, total: number, name: string, code: string }> = {};
+    let totalCost = 0;
+    const itemsProfit: any[] = [];
 
     filteredSales.forEach(sale => {
       totalRevenue += sale.total;
       sale.items.forEach(item => {
-        totalItems += item.quantity;
-        if (!productStats[item.productId]) {
-          productStats[item.productId] = { qty: 0, total: 0, name: item.name, code: '' };
-          const p = products.find(prod => prod.id === item.productId);
-          if (p) productStats[item.productId].code = p.code;
-        }
-        productStats[item.productId].qty += item.quantity;
-        productStats[item.productId].total += (item.price - item.discount) * item.quantity;
+        const product = products.find(p => p.id === item.productId);
+        const buyPrice = product?.buyPrice || 0;
+        const itemCost = buyPrice * item.quantity;
+        const itemRevenue = (item.price - item.discount) * item.quantity;
+        const itemProfit = itemRevenue - itemCost;
+
+        totalCost += itemCost;
+        itemsProfit.push({
+          name: item.name,
+          qty: item.quantity,
+          cost: itemCost,
+          revenue: itemRevenue,
+          profit: itemProfit,
+          date: sale.timestamp
+        });
       });
     });
 
-    return { totalRevenue, totalItems, productStats: Object.values(productStats).sort((a, b) => b.qty - a.qty) };
+    return { 
+      totalRevenue, 
+      totalCost, 
+      totalProfit: totalRevenue - totalCost,
+      itemsProfit: itemsProfit.sort((a, b) => b.date - a.date)
+    };
   }, [filteredSales, products]);
-
-  const searchedProductStats = useMemo(() => {
-    if (!prodSearch) return stats.productStats;
-    return stats.productStats.filter(p => 
-      p.name.toLowerCase().includes(prodSearch.toLowerCase()) || 
-      p.code.toLowerCase().includes(prodSearch.toLowerCase())
-    );
-  }, [stats.productStats, prodSearch]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-10">
-      <div className="flex justify-between items-end">
-        <div>
-          <h1 className="text-3xl font-black text-gray-800 tracking-tighter">Relatórios de Desempenho</h1>
-          <p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Análise de Vendas e Itens por Período</p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-black text-gray-800 tracking-tighter">Financeiro & Lucros</h1>
+        <p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Controle de rentabilidade e reposição de estoque</p>
       </div>
 
       <div className="bg-white p-8 rounded-[3rem] shadow-xl border-2 border-gray-50 grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2">
-          <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Data Inicial</label>
+          <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Início do Período</label>
           <input type="date" className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-orange-600 rounded-2xl font-black outline-none" value={startDate} onChange={e => setStartDate(e.target.value)} />
         </div>
         <div className="space-y-2">
-          <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Data Final</label>
+          <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Fim do Período</label>
           <input type="date" className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-orange-600 rounded-2xl font-black outline-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-tr from-orange-600 to-rose-500 p-8 rounded-[3rem] text-white shadow-xl">
-          <p className="text-[10px] font-black uppercase opacity-70 mb-1">Faturamento no Período</p>
-          <h3 className="text-3xl font-black tracking-tighter">R$ {stats.totalRevenue.toFixed(2)}</h3>
-        </div>
         <div className="bg-white p-8 rounded-[3rem] shadow-lg border-2 border-gray-50">
-          <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Itens Vendidos</p>
-          <h3 className="text-3xl font-black tracking-tighter text-gray-800">{stats.totalItems} un.</h3>
+          <div className="flex items-center gap-3 text-orange-600 mb-2">
+            <Landmark size={20} />
+            <p className="text-[10px] font-black uppercase tracking-widest">Faturamento Bruto</p>
+          </div>
+          <h3 className="text-3xl font-black tracking-tighter text-gray-800">R$ {financialData.totalRevenue.toFixed(2)}</h3>
         </div>
-        <div className="bg-white p-8 rounded-[3rem] shadow-lg border-2 border-gray-50">
-          <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Total de Pedidos</p>
-          <h3 className="text-3xl font-black tracking-tighter text-gray-800">{filteredSales.length}</h3>
+        
+        <div className="bg-rose-50 p-8 rounded-[3rem] shadow-lg border-2 border-rose-100">
+          <div className="flex items-center gap-3 text-rose-600 mb-2">
+            <TrendingDown size={20} />
+            <p className="text-[10px] font-black uppercase tracking-widest">Valor de Reposição (Custo)</p>
+          </div>
+          <h3 className="text-3xl font-black tracking-tighter text-rose-700">R$ {financialData.totalCost.toFixed(2)}</h3>
+          <p className="text-[9px] font-bold text-rose-400 mt-1 uppercase">Reserve este valor para estoque</p>
+        </div>
+
+        <div className="bg-gradient-to-tr from-green-600 to-emerald-500 p-8 rounded-[3rem] text-white shadow-xl">
+          <div className="flex items-center gap-3 mb-2">
+            <Wallet size={20} />
+            <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Lucro Líquido Real</p>
+          </div>
+          <h3 className="text-4xl font-black tracking-tighter">R$ {financialData.totalProfit.toFixed(2)}</h3>
+          <p className="text-[9px] font-bold mt-1 uppercase opacity-70">Disponível para uso pessoal</p>
         </div>
       </div>
 
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-xl font-black text-gray-800">Produtos Vendidos</h2>
-          <div className="flex gap-2 items-center bg-white px-4 py-2 rounded-2xl border shadow-sm">
-            <Search size={16} className="text-gray-400" />
-            <input type="text" placeholder="Localizar item..." className="bg-transparent outline-none text-xs font-bold w-40" value={prodSearch} onChange={e => setProdSearch(e.target.value)} />
-          </div>
+      <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border-2 border-gray-50">
+        <div className="p-6 border-b bg-gray-50 flex justify-between items-center">
+          <h2 className="text-lg font-black text-gray-800 uppercase tracking-tight">Detalhamento de Lucro por Item</h2>
+          <span className="text-[10px] font-black text-gray-400 bg-white px-4 py-1.5 rounded-full border">{financialData.itemsProfit.length} Itens Vendidos</span>
         </div>
-        <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border-2 border-gray-50">
+        <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
-              <tr><th className="p-6">Produto</th><th className="p-6 text-center">Qtd Vendida</th><th className="p-6 text-right">Subtotal</th></tr>
+            <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
+              <tr>
+                <th className="p-6">Data/Hora</th>
+                <th className="p-6">Produto</th>
+                <th className="p-6 text-center">Qtd</th>
+                <th className="p-6 text-right">Custo Tot.</th>
+                <th className="p-6 text-right">Venda Tot.</th>
+                <th className="p-6 text-right">Lucro</th>
+              </tr>
             </thead>
             <tbody className="divide-y">
-              {searchedProductStats.length > 0 ? searchedProductStats.map((p, idx) => (
+              {financialData.itemsProfit.map((item, idx) => (
                 <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                  <td className="p-6"><p className="font-black text-gray-800">{p.name}</p><p className="text-[9px] font-black text-orange-600 uppercase">{p.code}</p></td>
-                  <td className="p-6 text-center"><span className="px-4 py-1.5 bg-orange-100 text-orange-700 rounded-full font-black text-xs">{p.qty} un</span></td>
-                  <td className="p-6 text-right font-black text-gray-900">R$ {p.total.toFixed(2)}</td>
+                  <td className="p-6 text-xs font-bold text-gray-400">
+                    {new Date(item.date).toLocaleDateString()} {new Date(item.date).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                  </td>
+                  <td className="p-6 font-black text-gray-800 uppercase">{item.name}</td>
+                  <td className="p-6 text-center"><span className="px-3 py-1 bg-gray-100 rounded-lg font-black text-xs">{item.qty}</span></td>
+                  <td className="p-6 text-right text-rose-500 font-bold text-sm">R$ {item.cost.toFixed(2)}</td>
+                  <td className="p-6 text-right text-gray-800 font-bold text-sm">R$ {item.revenue.toFixed(2)}</td>
+                  <td className="p-6 text-right"><span className="font-black text-green-600 text-lg">R$ {item.profit.toFixed(2)}</span></td>
                 </tr>
-              )) : (
-                <tr><td colSpan={3} className="p-20 text-center opacity-30 italic font-bold">Nenhuma venda neste período.</td></tr>
+              ))}
+              {financialData.itemsProfit.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="p-20 text-center opacity-30 italic font-bold">Nenhuma venda realizada no período selecionado.</td>
+                </tr>
               )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ReportsView = ({ sales, products, settings, onGenerateInsights, isAnalyzing, onVoidAttempt }: any) => {
+  const dailyEarnings = useMemo(() => {
+    const today = new Date().toLocaleDateString();
+    return sales
+      .filter(s => s.status === 'finalizada' && new Date(s.timestamp).toLocaleDateString() === today)
+      .reduce((sum, s) => sum + s.total, 0);
+  }, [sales]);
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-gradient-to-tr from-orange-600 to-rose-500 p-8 rounded-[3rem] text-white shadow-xl">
+          <p className="text-[11px] font-black uppercase opacity-70 mb-1">Faturamento Hoje</p>
+          <h3 className="text-4xl font-black tracking-tighter">R$ {dailyEarnings.toFixed(2)}</h3>
+        </div>
+        <div className="bg-white p-8 rounded-[3rem] shadow-lg flex items-center justify-between border">
+          <h4 className="font-black text-gray-400 uppercase text-xs tracking-widest">Análise de IA</h4>
+          <button onClick={onGenerateInsights} disabled={isAnalyzing} className="p-4 bg-orange-50 rounded-2xl text-orange-600 hover:bg-orange-600 hover:text-white transition-all shadow-sm">
+            {isAnalyzing ? <Loader2 className="animate-spin" /> : <Sparkles size={24} />}
+          </button>
+        </div>
+      </div>
+      <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
+              <tr><th className="p-6">Status</th><th className="p-6">Data</th><th className="p-6">Cliente</th><th className="p-6 text-right">Total</th><th className="p-6 text-center">Ações</th></tr>
+            </thead>
+            <tbody className="divide-y">
+              {sales.map((s: Sale) => (
+                <tr key={s.id} className={`transition-all ${s.status === 'cancelada' ? 'bg-gray-50 opacity-40 grayscale' : 'hover:bg-gray-50/50'}`}>
+                  <td className="p-6">
+                    {s.status === 'cancelada' ? (
+                      <span className="bg-rose-100 text-rose-600 px-4 py-1.5 rounded-full text-[9px] font-black uppercase border border-rose-200">Cancelada</span>
+                    ) : (
+                      <span className="bg-green-100 text-green-600 px-4 py-1.5 rounded-full text-[9px] font-black uppercase border border-green-200">Finalizada</span>
+                    )}
+                  </td>
+                  <td className="p-6"><div className="font-black text-gray-800">{new Date(s.timestamp).toLocaleDateString()}</div><div className="text-[9px] text-gray-400 font-bold uppercase">{new Date(s.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div></td>
+                  <td className="p-6 font-bold text-gray-600">{s.customerName || 'Balcão'}</td>
+                  <td className={`p-6 text-right font-black text-xl ${s.status === 'cancelada' ? 'line-through text-gray-400' : 'text-gray-900'}`}>R$ {Number(s.total).toFixed(2)}</td>
+                  <td className="p-6">
+                    <div className="flex justify-center gap-2">
+                      <button onClick={() => generateReceiptImage(s, settings)} className="p-3 text-gray-400 hover:text-orange-600 border rounded-xl" title="Baixar Recibo"><Download size={18}/></button>
+                      {s.status === 'finalizada' && <button onClick={() => onVoidAttempt(s.id)} className="px-5 py-3 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl transition-all font-black text-[10px] border border-rose-100">CANCELAR</button>}
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -868,56 +957,6 @@ const TeamView = ({ team, onSave, onDelete, onEdit, onAddNew, isModalOpen, setIs
   );
 };
 
-const SalesHistory = ({ sales, dailyEarnings, settings, onGenerateInsights, isAnalyzing, onVoidAttempt }: any) => {
-  return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-gradient-to-tr from-orange-600 to-rose-500 p-8 rounded-[3rem] text-white shadow-xl">
-          <p className="text-[11px] font-black uppercase opacity-70 mb-1">Faturamento Hoje</p>
-          <h3 className="text-4xl font-black tracking-tighter">R$ {dailyEarnings.toFixed(2)}</h3>
-        </div>
-        <div className="bg-white p-8 rounded-[3rem] shadow-lg flex items-center justify-between border">
-          <h4 className="font-black text-gray-400 uppercase text-xs tracking-widest">Análise de IA</h4>
-          <button onClick={onGenerateInsights} disabled={isAnalyzing} className="p-4 bg-orange-50 rounded-2xl text-orange-600 hover:bg-orange-600 hover:text-white transition-all shadow-sm">
-            {isAnalyzing ? <Loader2 className="animate-spin" /> : <Sparkles size={24} />}
-          </button>
-        </div>
-      </div>
-      <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
-              <tr><th className="p-6">Status</th><th className="p-6">Data</th><th className="p-6">Cliente</th><th className="p-6 text-right">Total</th><th className="p-6 text-center">Ações</th></tr>
-            </thead>
-            <tbody className="divide-y">
-              {sales.map((s: Sale) => (
-                <tr key={s.id} className={`transition-all ${s.status === 'cancelada' ? 'bg-gray-50 opacity-40 grayscale' : 'hover:bg-gray-50/50'}`}>
-                  <td className="p-6">
-                    {s.status === 'cancelada' ? (
-                      <span className="bg-rose-100 text-rose-600 px-4 py-1.5 rounded-full text-[9px] font-black uppercase border border-rose-200">Cancelada</span>
-                    ) : (
-                      <span className="bg-green-100 text-green-600 px-4 py-1.5 rounded-full text-[9px] font-black uppercase border border-green-200">Finalizada</span>
-                    )}
-                  </td>
-                  <td className="p-6"><div className="font-black text-gray-800">{new Date(s.timestamp).toLocaleDateString()}</div><div className="text-[9px] text-gray-400 font-bold uppercase">{new Date(s.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div></td>
-                  <td className="p-6 font-bold text-gray-600">{s.customerName || 'Balcão'}</td>
-                  <td className={`p-6 text-right font-black text-xl ${s.status === 'cancelada' ? 'line-through text-gray-400' : 'text-gray-900'}`}>R$ {Number(s.total).toFixed(2)}</td>
-                  <td className="p-6">
-                    <div className="flex justify-center gap-2">
-                      <button onClick={() => generateReceiptImage(s, settings)} className="p-3 text-gray-400 hover:text-orange-600 border rounded-xl" title="Baixar Recibo"><Download size={18}/></button>
-                      {s.status === 'finalizada' && <button onClick={() => onVoidAttempt(s.id)} className="px-5 py-3 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl transition-all font-black text-[10px] border border-rose-100">CANCELAR</button>}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const CrediarioManagement = ({ sales, customers, onUpdateInstallments }: any) => {
   const [filterCustomer, setFilterCustomer] = useState('');
   const filteredSales = useMemo(() => {
@@ -967,18 +1006,66 @@ const CrediarioManagement = ({ sales, customers, onUpdateInstallments }: any) =>
   );
 };
 
-const InventoryView = ({ products, onSave, onDelete, onEdit, isModalOpen, setIsModalOpen, editingProduct, onPrintAll }: any) => {
+const InventoryView = ({ products, onSave, onDelete, onEdit, isModalOpen, setIsModalOpen, editingProduct, prefilledCode, onPrintAll, onOpenScan }: any) => {
   const [formData, setFormData] = useState({ name: '', code: '', sellPrice: '', buyPrice: '', quantity: '' });
+  const [additionalQty, setAdditionalQty] = useState('0');
+
   useEffect(() => {
-    if (editingProduct) setFormData({ name: editingProduct.name, code: editingProduct.code, sellPrice: String(editingProduct.sellPrice), buyPrice: String(editingProduct.buyPrice || ''), quantity: String(editingProduct.quantity) });
-    else setFormData({ name: '', code: '', sellPrice: '', buyPrice: '', quantity: '' });
-  }, [editingProduct, isModalOpen]);
-  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave({ name: formData.name, code: formData.code, sellPrice: parseFloat(formData.sellPrice) || 0, buyPrice: parseFloat(formData.buyPrice) || 0, quantity: parseInt(formData.quantity) || 0 }); setIsModalOpen(false); };
+    if (editingProduct) {
+      setFormData({ 
+        name: editingProduct.name, 
+        code: editingProduct.code, 
+        sellPrice: String(editingProduct.sellPrice), 
+        buyPrice: String(editingProduct.buyPrice || ''), 
+        quantity: String(editingProduct.quantity) 
+      });
+      setAdditionalQty('0');
+    } else {
+      setFormData({ 
+        name: '', 
+        code: prefilledCode || '', 
+        sellPrice: '', 
+        buyPrice: '', 
+        quantity: '0' 
+      });
+      setAdditionalQty('0');
+    }
+  }, [editingProduct, isModalOpen, prefilledCode]);
+
+  const handleSubmit = (e: React.FormEvent) => { 
+    e.preventDefault(); 
+    const finalQuantity = editingProduct 
+      ? (parseInt(formData.quantity) + parseInt(additionalQty)) 
+      : parseInt(formData.quantity);
+
+    onSave({ 
+      name: formData.name, 
+      code: formData.code, 
+      sellPrice: parseFloat(formData.sellPrice) || 0, 
+      buyPrice: parseFloat(formData.buyPrice) || 0, 
+      quantity: finalQuantity 
+    }); 
+    setIsModalOpen(false); 
+  };
+
   return (
     <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <div><h1 className="text-3xl font-black text-gray-800 tracking-tighter">Estoque</h1><p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Produtos Cadastrados</p></div>
-        <div className="flex gap-3"><button onClick={onPrintAll} className="bg-white border text-orange-600 px-6 py-4 rounded-[2rem] font-black shadow-lg flex items-center gap-2"><Printer size={20}/> ETIQUETAS</button><button onClick={() => { setFormData({ name: '', code: '', sellPrice: '', buyPrice: '', quantity: '' }); setIsModalOpen(true); }} className="bg-orange-600 text-white px-8 py-4 rounded-[2rem] font-black shadow-2xl flex items-center gap-2 hover:scale-105 transition-all"><Plus size={20}/> NOVO ITEM</button></div>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div>
+          <h1 className="text-3xl font-black text-gray-800 tracking-tighter">Estoque</h1>
+          <p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Produtos Cadastrados</p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <button onClick={onOpenScan} className="bg-blue-600 text-white px-6 py-4 rounded-[2rem] font-black shadow-lg flex items-center gap-2 hover:bg-blue-700 transition-all">
+            <ScanBarcode size={20}/> ESCANEAR ITEM
+          </button>
+          <button onClick={onPrintAll} className="bg-white border text-orange-600 px-6 py-4 rounded-[2rem] font-black shadow-lg flex items-center gap-2 hover:bg-orange-50 transition-all">
+            <Printer size={20}/> ETIQUETAS
+          </button>
+          <button onClick={() => { setFormData({ name: '', code: '', sellPrice: '', buyPrice: '', quantity: '0' }); setIsModalOpen(true); }} className="bg-orange-600 text-white px-8 py-4 rounded-[2rem] font-black shadow-2xl flex items-center gap-2 hover:scale-105 transition-all">
+            <Plus size={20}/> NOVO ITEM
+          </button>
+        </div>
       </div>
       <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border">
         <table className="w-full text-left">
@@ -988,10 +1075,16 @@ const InventoryView = ({ products, onSave, onDelete, onEdit, isModalOpen, setIsM
           <tbody className="divide-y">
             {products.map((p: any) => (
               <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                <td className="p-6"><p className="font-black text-gray-800">{p.name}</p><p className="text-[9px] font-mono text-orange-600 uppercase">{p.code}</p></td>
+                <td className="p-6">
+                  <p className="font-black text-gray-800 uppercase leading-tight">{p.name}</p>
+                  <p className="text-[9px] font-mono text-orange-600 uppercase tracking-widest mt-1">{p.code}</p>
+                </td>
                 <td className="p-6 font-black text-lg">R$ {Number(p.sellPrice).toFixed(2)}</td>
                 <td className="p-6"><span className={`px-4 py-1 rounded-full text-[10px] font-black ${p.quantity < 5 ? 'bg-rose-100 text-rose-600' : 'bg-green-100 text-green-600'}`}>{p.quantity} UN</span></td>
-                <td className="p-6 flex justify-center gap-2"><button onClick={() => onEdit(p)} className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Edit3 size={18}/></button><button onClick={() => confirm('Apagar?') && onDelete(p.id)} className="p-3 bg-rose-50 text-rose-600 rounded-xl"><Trash2 size={18}/></button></td>
+                <td className="p-6 flex justify-center gap-2">
+                  <button onClick={() => onEdit(p)} className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors"><Edit3 size={18}/></button>
+                  <button onClick={() => confirm('Apagar item permanentemente?') && onDelete(p.id)} className="p-3 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors"><Trash2 size={18}/></button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1000,18 +1093,50 @@ const InventoryView = ({ products, onSave, onDelete, onEdit, isModalOpen, setIsM
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-lg rounded-[3rem] p-10 shadow-3xl">
-            <h2 className="text-2xl font-black mb-8">{editingProduct ? 'Editar' : 'Novo'} Produto</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <input required placeholder="NOME DO PRODUTO" className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-orange-600 outline-none" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} />
-              <input required placeholder="CÓDIGO / SCANNER" className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-orange-600 outline-none" value={formData.code} onChange={e=>setFormData({...formData, code: e.target.value})} />
-              <div className="grid grid-cols-2 gap-4">
-                <input required placeholder="PREÇO COMPRA" type="number" step="0.01" className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-600" value={formData.buyPrice} onChange={e=>setFormData({...formData, buyPrice: e.target.value})} />
-                <input required placeholder="PREÇO VENDA" type="number" step="0.01" className="w-full p-4 bg-orange-50 rounded-2xl font-bold outline-none border-2 border-orange-100 focus:border-orange-600" value={formData.sellPrice} onChange={e=>setFormData({...formData, sellPrice: e.target.value})} />
+            <div className="flex items-center gap-3 mb-8">
+              <div className={`p-4 rounded-2xl ${editingProduct ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>
+                {editingProduct ? <Edit3 size={24}/> : <Plus size={24}/>}
               </div>
-              <input required placeholder="ESTOQUE" type="number" className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-600" value={formData.quantity} onChange={e=>setFormData({...formData, quantity: e.target.value})} />
-              <div className="flex gap-4 mt-6">
-                <button type="button" onClick={()=>setIsModalOpen(false)} className="flex-1 py-4 font-black text-gray-400">CANCELAR</button>
-                <button type="submit" className="flex-1 py-4 bg-orange-600 text-white rounded-2xl font-black shadow-xl">SALVAR ITEM</button>
+              <h2 className="text-2xl font-black uppercase tracking-tight">{editingProduct ? 'Editar / Entrada' : 'Novo Produto'}</h2>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Nome do Produto</label>
+                <input required className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-orange-600 outline-none" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Código (EAN / QR)</label>
+                <input required className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-2 border-transparent focus:border-orange-600 outline-none" value={formData.code} onChange={e=>setFormData({...formData, code: e.target.value})} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Custo Atual (R$)</label>
+                  <input required type="number" step="0.01" className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-600" value={formData.buyPrice} onChange={e=>setFormData({...formData, buyPrice: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Venda (R$)</label>
+                  <input required type="number" step="0.01" className="w-full p-4 bg-orange-50 rounded-2xl font-bold outline-none border-2 border-orange-100 focus:border-orange-600" value={formData.sellPrice} onChange={e=>setFormData({...formData, sellPrice: e.target.value})} />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 bg-gray-50 p-6 rounded-3xl border-2 border-dashed">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Estoque Atual</label>
+                  <input type="number" readOnly={!!editingProduct} className="w-full p-4 bg-white/50 rounded-2xl font-black outline-none border" value={formData.quantity} onChange={e=>setFormData({...formData, quantity: e.target.value})} />
+                </div>
+                {editingProduct && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-blue-600 uppercase ml-1 animate-pulse">ADICIONAR +</label>
+                    <input type="number" className="w-full p-4 bg-blue-50 rounded-2xl font-black outline-none border-2 border-blue-200 focus:border-blue-500 text-blue-700" value={additionalQty} onChange={e=>setAdditionalQty(e.target.value)} />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-4 mt-8">
+                <button type="button" onClick={()=>setIsModalOpen(false)} className="flex-1 py-4 font-black text-gray-400 hover:text-gray-600 transition-all">CANCELAR</button>
+                <button type="submit" className={`flex-1 py-4 text-white rounded-2xl font-black shadow-xl transition-all ${editingProduct ? 'bg-blue-600' : 'bg-orange-600'}`}>
+                  {editingProduct ? 'ATUALIZAR ITEM' : 'CADASTRAR ITEM'}
+                </button>
               </div>
             </form>
           </div>
