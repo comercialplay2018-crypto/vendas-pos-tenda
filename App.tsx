@@ -13,7 +13,7 @@ import { Scanner } from './components/Scanner';
 import { generateLabelPDF, generateReceiptImage, generateAllLabelsPDF, generateLoginCardPDF } from './utils/pdfUtils';
 import { GoogleGenAI } from "@google/genai";
 
-const APP_VERSION = "3.6.0-PRODUCTION";
+const APP_VERSION = "3.6.5-PRODUCTION";
 const ADMIN_QR_KEY = "TENDA-JL-ADMIN-2025"; 
 
 const MASTER_ADMIN_USER = "ADMIN";
@@ -364,7 +364,7 @@ const App: React.FC = () => {
             <NavIcon icon={<ShoppingCart size={24}/>} active={activeTab === 'pos'} onClick={() => setActiveTab('pos')} label="Caixa" />
             <NavIcon icon={<Wallet size={24}/>} active={activeTab === 'profit'} onClick={() => setActiveTab('profit')} label="Lucros" />
             <NavIcon icon={<CreditCard size={24}/>} active={activeTab === 'crediario'} onClick={() => setActiveTab('crediario')} label="Crediário" />
-            <NavIcon icon={<BarChart3 size={24}/>} active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} label="Vendas" />
+            <NavIcon icon={<BarChart3 size={24}/>} active={activeTab === 'sales'} onClick={() => setActiveTab('sales')} label="Vendas" />
             <NavIcon icon={<Package size={24}/>} active={activeTab === 'inventory'} onClick={() => setActiveTab('inventory')} label="Estoque" />
             <NavIcon icon={<Users size={24}/>} active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} label="Clientes" />
             {currentUser.role === 'admin' && <NavIcon icon={<UserPlus size={24}/>} active={activeTab === 'team'} onClick={() => setActiveTab('team')} label="Equipe" />}
@@ -606,12 +606,23 @@ const App: React.FC = () => {
           <ProfitView sales={sales} products={products} />
         )}
 
+        {activeTab === 'sales' && (
+          <SalesHistory 
+            sales={sales} 
+            dailyEarnings={dailyEarnings} 
+            settings={settings} 
+            onGenerateInsights={handleGenerateInsights} 
+            isAnalyzing={isAnalyzing} 
+            onVoidAttempt={(saleId: string) => {
+              setPendingVoidSaleId(saleId);
+              setScannerMode('admin');
+              setIsScannerOpen(true);
+            }}
+          />
+        )}
+
         {activeTab === 'reports' && (
-          <ReportsView sales={sales} products={products} settings={settings} onGenerateInsights={handleGenerateInsights} isAnalyzing={isAnalyzing} onVoidAttempt={(saleId: string) => {
-            setPendingVoidSaleId(saleId);
-            setScannerMode('admin');
-            setIsScannerOpen(true);
-          }} />
+          <ReportsView sales={sales} products={products} settings={settings} />
         )}
 
         {activeTab === 'crediario' && (
@@ -671,7 +682,7 @@ const App: React.FC = () => {
         <MobileNavIcon icon={<ShoppingCart/>} label="Caixa" active={activeTab === 'pos'} onClick={() => setActiveTab('pos')} />
         <MobileNavIcon icon={<Wallet/>} label="Lucros" active={activeTab === 'profit'} onClick={() => setActiveTab('profit')} />
         <MobileNavIcon icon={<CreditCard/>} label="Crediário" active={activeTab === 'crediario'} onClick={() => setActiveTab('crediario')} />
-        <MobileNavIcon icon={<History/>} label="Vendas" active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} />
+        <MobileNavIcon icon={<History/>} label="Vendas" active={activeTab === 'sales'} onClick={() => setActiveTab('sales')} />
         <MobileNavIcon icon={<Package/>} label="Estoque" active={activeTab === 'inventory'} onClick={() => setActiveTab('inventory')} />
         <MobileNavIcon icon={<Users/>} label="Clientes" active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} />
         <MobileNavIcon icon={<SettingsIcon/>} label="Menu" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
@@ -688,7 +699,6 @@ const App: React.FC = () => {
   );
 };
 
-// --- VIEW DE LUCROS ---
 const ProfitView = ({ sales, products }: { sales: Sale[], products: Product[] }) => {
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
@@ -822,14 +832,95 @@ const ProfitView = ({ sales, products }: { sales: Sale[], products: Product[] })
   );
 };
 
-const ReportsView = ({ sales, products, settings, onGenerateInsights, isAnalyzing, onVoidAttempt }: any) => {
-  const dailyEarnings = useMemo(() => {
-    const today = new Date().toLocaleDateString();
-    return sales
-      .filter(s => s.status === 'finalizada' && new Date(s.timestamp).toLocaleDateString() === today)
-      .reduce((sum, s) => sum + s.total, 0);
-  }, [sales]);
+const ReportsView = ({ sales, products, settings }: { sales: Sale[], products: Product[], settings: SettingsType }) => {
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [prodSearch, setProdSearch] = useState('');
 
+  const filteredSales = useMemo(() => {
+    const start = new Date(startDate + 'T00:00:00').getTime();
+    const end = new Date(endDate + 'T23:59:59').getTime();
+    return sales.filter(s => s.status === 'finalizada' && s.timestamp >= start && s.timestamp <= end);
+  }, [sales, startDate, endDate]);
+
+  const stats = useMemo(() => {
+    let totalRevenue = 0;
+    let totalItems = 0;
+    const productStats: Record<string, { qty: number, total: number, name: string, code: string }> = {};
+
+    filteredSales.forEach(sale => {
+      totalRevenue += sale.total;
+      sale.items.forEach(item => {
+        totalItems += item.quantity;
+        if (!productStats[item.productId]) {
+          productStats[item.productId] = { qty: 0, total: 0, name: item.name, code: '' };
+          const p = products.find(prod => prod.id === item.productId);
+          if (p) productStats[item.productId].code = p.code;
+        }
+        productStats[item.productId].qty += item.quantity;
+        productStats[item.productId].total += (item.price - item.discount) * item.quantity;
+      });
+    });
+
+    return { totalRevenue, totalItems, productStats: Object.values(productStats).sort((a, b) => b.qty - a.qty) };
+  }, [filteredSales, products]);
+
+  const searchedProductStats = useMemo(() => {
+    if (!prodSearch) return stats.productStats;
+    return stats.productStats.filter(p => 
+      p.name.toLowerCase().includes(prodSearch.toLowerCase()) || 
+      p.code.toLowerCase().includes(prodSearch.toLowerCase())
+    );
+  }, [stats.productStats, prodSearch]);
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500 pb-10">
+      <div className="flex justify-between items-end">
+        <div>
+          <h1 className="text-3xl font-black text-gray-800 tracking-tighter">Relatórios</h1>
+          <p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Análise detalhada de itens</p>
+        </div>
+      </div>
+
+      <div className="bg-white p-8 rounded-[3rem] shadow-xl border-2 border-gray-50 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-2">
+          <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Data Inicial</label>
+          <input type="date" className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-orange-600 rounded-2xl font-black outline-none" value={startDate} onChange={e => setStartDate(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Data Final</label>
+          <input type="date" className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-orange-600 rounded-2xl font-black outline-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
+        </div>
+      </div>
+
+      <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border-2 border-gray-50">
+        <div className="p-6 border-b flex justify-between items-center">
+            <h2 className="font-black text-gray-800 uppercase">Produtos mais vendidos</h2>
+            <div className="flex gap-2 items-center bg-gray-50 px-4 py-2 rounded-xl border">
+                <Search size={14} className="text-gray-400"/>
+                <input placeholder="Filtrar..." className="bg-transparent outline-none text-xs font-bold" value={prodSearch} onChange={e=>setProdSearch(e.target.value)}/>
+            </div>
+        </div>
+        <table className="w-full text-left">
+            <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
+              <tr><th className="p-6">Produto</th><th className="p-6 text-center">Qtd</th><th className="p-6 text-right">Total</th></tr>
+            </thead>
+            <tbody className="divide-y">
+              {searchedProductStats.map((p, idx) => (
+                <tr key={idx}>
+                  <td className="p-6 font-black uppercase text-gray-700">{p.name}</td>
+                  <td className="p-6 text-center"><span className="px-3 py-1 bg-orange-100 text-orange-600 rounded-lg font-black text-xs">{p.qty}</span></td>
+                  <td className="p-6 text-right font-black">R$ {p.total.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const SalesHistory = ({ sales, dailyEarnings, settings, onGenerateInsights, isAnalyzing, onVoidAttempt }: any) => {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1167,7 +1258,7 @@ const CustomersView = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIs
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div><h1 className="text-3xl font-black text-gray-800 tracking-tighter">Clientes</h1><p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Base de Clientes Cadastrados</p></div>
+        <div><h1 className="text-3xl font-black text-gray-800 tracking-tighter">Clientes</h1><p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Base de Clientes</p></div>
         <button onClick={onAddNew} className="bg-rose-500 text-white px-8 py-4 rounded-[2rem] font-black shadow-xl flex items-center justify-center gap-2 hover:scale-105 transition-all"><Plus size={20}/> NOVO CLIENTE</button>
       </div>
 
@@ -1175,7 +1266,7 @@ const CustomersView = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIs
         <Search className="text-gray-300" />
         <input 
           type="text" 
-          placeholder="Pesquisar cliente por nome ou telefone..." 
+          placeholder="Pesquisar cliente..." 
           className="flex-1 font-bold outline-none text-lg" 
           value={search} 
           onChange={(e) => setSearch(e.target.value)} 
@@ -1183,10 +1274,10 @@ const CustomersView = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIs
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filtered.length > 0 ? filtered.map((c: any) => (
+        {filtered.map((c: any) => (
           <div key={c.id} className="bg-white p-7 rounded-[2.5rem] shadow-lg border-2 border-gray-50 flex items-center justify-between hover:border-orange-200 transition-all group">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-gradient-to-tr from-orange-100 to-rose-50 text-orange-600 rounded-2xl flex items-center justify-center font-black text-2xl shadow-inner">{c.name[0].toUpperCase()}</div>
+              <div className="w-14 h-14 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center font-black text-2xl">{c.name[0].toUpperCase()}</div>
               <div>
                 <h3 className="font-black text-gray-800 text-lg leading-tight">{c.name}</h3>
                 <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-1">{c.contact || 'S/ CONTATO'}</p>
@@ -1194,9 +1285,7 @@ const CustomersView = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIs
             </div>
             <button onClick={() => onEdit(c)} className="p-4 text-gray-300 group-hover:text-orange-600 bg-gray-50 group-hover:bg-orange-50 rounded-2xl transition-all border border-transparent group-hover:border-orange-100"><Edit3 size={20}/></button>
           </div>
-        )) : (
-          <div className="col-span-full py-20 text-center opacity-30 italic font-bold">Nenhum cliente localizado com os termos acima.</div>
-        )}
+        ))}
       </div>
 
       {isModalOpen && (
