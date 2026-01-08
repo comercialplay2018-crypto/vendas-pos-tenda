@@ -13,11 +13,43 @@ import { Scanner } from './components/Scanner';
 import { generateLabelPDF, generateReceiptImage, generateAllLabelsPDF, generateLoginCardPDF } from './utils/pdfUtils';
 import { GoogleGenAI } from "@google/genai";
 
-const APP_VERSION = "3.6.5-PRODUCTION";
+const APP_VERSION = "3.7.0-STABLE";
 const ADMIN_QR_KEY = "TENDA-JL-ADMIN-2025"; 
 
 const MASTER_ADMIN_USER = "ADMIN";
 const MASTER_ADMIN_PIN = "202525";
+
+// Interfaces para Props (Essencial para passar no build do Vercel)
+interface TabProps {
+  icon: React.ReactNode;
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  color?: string;
+}
+
+interface ProductFormProps {
+  products: Product[];
+  onSave: (p: any) => void;
+  onDelete: (id: string) => void;
+  onEdit: (p: Product) => void;
+  onAddNew: () => void;
+  isModalOpen: boolean;
+  setIsModalOpen: (open: boolean) => void;
+  editingProduct: Product | null;
+  prefilledCode: string;
+  onPrintAll: () => void;
+  onOpenScan: () => void;
+}
+
+interface SalesHistoryProps {
+  sales: Sale[];
+  dailyEarnings: number;
+  settings: SettingsType;
+  onGenerateInsights: () => void;
+  isAnalyzing: boolean;
+  onVoidAttempt: (id: string) => void;
+}
 
 const generateInstallments = (total: number, count: number): Installment[] => {
   const installments: Installment[] = [];
@@ -209,11 +241,11 @@ const App: React.FC = () => {
     
     setIsFinishing(true);
     try {
-      const saleData: any = {
+      const saleData: Omit<Sale, 'id'> = {
         timestamp: Date.now(),
         sellerId: currentUser.id,
         sellerName: currentUser.name,
-        status: 'finalizada' as const,
+        status: 'finalizada',
         items: cart.map(item => ({
           productId: item.product.id,
           name: item.product.name,
@@ -257,7 +289,7 @@ const App: React.FC = () => {
     }
     setIsAnalyzing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       const activeSales = sales.filter(s => s.status === 'finalizada').slice(0, 50);
       const salesSummary = activeSales.map(s => ({
         total: s.total,
@@ -367,7 +399,7 @@ const App: React.FC = () => {
             <NavIcon icon={<BarChart3 size={24}/>} active={activeTab === 'sales'} onClick={() => setActiveTab('sales')} label="Vendas" />
             <NavIcon icon={<Package size={24}/>} active={activeTab === 'inventory'} onClick={() => setActiveTab('inventory')} label="Estoque" />
             <NavIcon icon={<Users size={24}/>} active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} label="Clientes" />
-            {currentUser.role === 'admin' && <NavIcon icon={<UserPlus size={24}/>} active={activeTab === 'team'} onClick={() => setActiveTab('team')} label="Equipe" />}
+            {currentUser?.role === 'admin' && <NavIcon icon={<UserPlus size={24}/>} active={activeTab === 'team'} onClick={() => setActiveTab('team')} label="Equipe" />}
             <NavIcon icon={<SettingsIcon size={24}/>} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} label="Config" />
           </div>
           <NavIcon icon={<LogOut size={24}/>} onClick={() => setCurrentUser(null)} label="Sair" color="text-rose-400" />
@@ -597,7 +629,7 @@ const App: React.FC = () => {
                   NOVA VENDA <ArrowRight size={24}/>
                 </button>
               </div>
-              <p className="mt-8 text-[10px] font-black text-gray-300 uppercase tracking-widest">PEDIDO: #{finishedSaleData.id.substring(0,8).toUpperCase()}</p>
+              <p className="mt-8 text-[10px] font-black text-gray-300 uppercase tracking-widest">PEDIDO: #{finishedSaleData?.id.substring(0,8).toUpperCase()}</p>
             </div>
           </div>
         )}
@@ -661,7 +693,7 @@ const App: React.FC = () => {
           />
         )}
 
-        {activeTab === 'team' && currentUser.role === 'admin' && (
+        {activeTab === 'team' && currentUser?.role === 'admin' && (
           <TeamView 
             team={team} 
             onSave={(u: any) => editingUser ? dbService.updateUser(editingUser.id, u) : dbService.saveUser(u)}
@@ -699,7 +731,8 @@ const App: React.FC = () => {
   );
 };
 
-const ProfitView = ({ sales, products }: { sales: Sale[], products: Product[] }) => {
+// Componentes Separados com Tipagem Estrita
+const ProfitView: React.FC<{ sales: Sale[], products: Product[] }> = ({ sales, products }) => {
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -832,7 +865,7 @@ const ProfitView = ({ sales, products }: { sales: Sale[], products: Product[] })
   );
 };
 
-const ReportsView = ({ sales, products, settings }: { sales: Sale[], products: Product[], settings: SettingsType }) => {
+const ReportsView: React.FC<{ sales: Sale[], products: Product[], settings: SettingsType }> = ({ sales, products }) => {
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [prodSearch, setProdSearch] = useState('');
@@ -920,7 +953,7 @@ const ReportsView = ({ sales, products, settings }: { sales: Sale[], products: P
   );
 };
 
-const SalesHistory = ({ sales, dailyEarnings, settings, onGenerateInsights, isAnalyzing, onVoidAttempt }: any) => {
+const SalesHistory: React.FC<SalesHistoryProps> = ({ sales, dailyEarnings, settings, onGenerateInsights, isAnalyzing, onVoidAttempt }) => {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -970,21 +1003,21 @@ const SalesHistory = ({ sales, dailyEarnings, settings, onGenerateInsights, isAn
   );
 };
 
-const NavIcon = ({ icon, active, onClick, label, color }: any) => (
+const NavIcon: React.FC<TabProps> = ({ icon, active, onClick, label, color }) => (
   <button onClick={onClick} className={`flex flex-col items-center gap-2 p-5 rounded-3xl w-full transition-all group ${active ? 'bg-gradient-to-tr from-orange-600 to-rose-500 text-white shadow-2xl' : color || 'text-gray-400 hover:bg-orange-50 hover:text-orange-600'}`}>
     {icon}
     <span className="text-[9px] font-black uppercase tracking-widest">{label}</span>
   </button>
 );
 
-const MobileNavIcon = ({ icon, label, active, onClick }: any) => (
+const MobileNavIcon: React.FC<TabProps> = ({ icon, label, active, onClick }) => (
   <button onClick={onClick} className={`flex flex-col items-center justify-center flex-1 py-3 gap-1 transition-all ${active ? 'text-orange-600 scale-110' : 'text-gray-400'}`}>
     <div className={`p-3 rounded-2xl ${active ? 'bg-orange-100 shadow-sm' : ''}`}>{icon}</div>
     <span className="text-[8px] font-black uppercase tracking-tighter">{label}</span>
   </button>
 );
 
-const TeamView = ({ team, onSave, onDelete, onEdit, onAddNew, isModalOpen, setIsModalOpen, editingUser, settings }: any) => {
+const TeamView: React.FC<{ team: UserWithPin[], onSave: (u: any) => void, onDelete: (id: string) => void, onEdit: (u: UserWithPin) => void, onAddNew: () => void, isModalOpen: boolean, setIsModalOpen: (o: boolean) => void, editingUser: UserWithPin | null, settings: SettingsType }> = ({ team, onSave, onDelete, onEdit, onAddNew, isModalOpen, setIsModalOpen, editingUser, settings }) => {
   const [formData, setFormData] = useState({ name: '', pin: '', role: 'vendedor' as 'vendedor' | 'admin' });
   useEffect(() => {
     if (editingUser) setFormData({ name: editingUser.name, pin: editingUser.pin, role: editingUser.role });
@@ -1004,7 +1037,7 @@ const TeamView = ({ team, onSave, onDelete, onEdit, onAddNew, isModalOpen, setIs
         <button onClick={onAddNew} className="bg-orange-600 text-white px-8 py-4 rounded-[2rem] font-black shadow-xl flex items-center gap-2"><UserPlus size={20}/> NOVO USUÁRIO</button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {team.map((u: any) => (
+        {team.map((u: UserWithPin) => (
           <div key={u.id} className="bg-white p-6 rounded-[2.5rem] shadow-lg border-2 border-gray-50 flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -1048,7 +1081,7 @@ const TeamView = ({ team, onSave, onDelete, onEdit, onAddNew, isModalOpen, setIs
   );
 };
 
-const CrediarioManagement = ({ sales, customers, onUpdateInstallments }: any) => {
+const CrediarioManagement: React.FC<{ sales: Sale[], customers: Customer[], onUpdateInstallments: (id: string, i: Installment[]) => Promise<void> }> = ({ sales, onUpdateInstallments }) => {
   const [filterCustomer, setFilterCustomer] = useState('');
   const filteredSales = useMemo(() => {
     return sales.filter((s: Sale) => s.customerName?.toLowerCase().includes(filterCustomer.toLowerCase()) && s.status !== 'cancelada');
@@ -1097,7 +1130,7 @@ const CrediarioManagement = ({ sales, customers, onUpdateInstallments }: any) =>
   );
 };
 
-const InventoryView = ({ products, onSave, onDelete, onEdit, isModalOpen, setIsModalOpen, editingProduct, prefilledCode, onPrintAll, onOpenScan }: any) => {
+const InventoryView: React.FC<ProductFormProps> = ({ products, onSave, onDelete, onEdit, isModalOpen, setIsModalOpen, editingProduct, prefilledCode, onPrintAll, onOpenScan }) => {
   const [formData, setFormData] = useState({ name: '', code: '', sellPrice: '', buyPrice: '', quantity: '' });
   const [additionalQty, setAdditionalQty] = useState('0');
 
@@ -1237,7 +1270,7 @@ const InventoryView = ({ products, onSave, onDelete, onEdit, isModalOpen, setIsM
   );
 };
 
-const CustomersView = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIsModalOpen, editingCustomer }: any) => {
+const CustomersView: React.FC<{ customers: Customer[], onSave: (c: any) => void, onAddNew: () => void, onEdit: (c: Customer) => void, isModalOpen: boolean, setIsModalOpen: (o: boolean) => void, editingCustomer: Customer | null }> = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIsModalOpen, editingCustomer }) => {
   const [formData, setFormData] = useState({ name: '', contact: '' });
   const [search, setSearch] = useState('');
 
@@ -1247,7 +1280,7 @@ const CustomersView = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIs
   }, [editingCustomer, isModalOpen]);
 
   const filtered = useMemo(() => {
-    return customers.filter((c: any) => 
+    return customers.filter((c: Customer) => 
       c.name.toLowerCase().includes(search.toLowerCase()) || 
       (c.contact && c.contact.includes(search))
     );
@@ -1274,7 +1307,7 @@ const CustomersView = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIs
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filtered.map((c: any) => (
+        {filtered.map((c: Customer) => (
           <div key={c.id} className="bg-white p-7 rounded-[2.5rem] shadow-lg border-2 border-gray-50 flex items-center justify-between hover:border-orange-200 transition-all group">
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center font-black text-2xl">{c.name[0].toUpperCase()}</div>
@@ -1307,7 +1340,7 @@ const CustomersView = ({ customers, onSave, onAddNew, onEdit, isModalOpen, setIs
   );
 };
 
-const SettingsView = ({ settings, onSave }: any) => {
+const SettingsView: React.FC<{ settings: SettingsType, onSave: (s: SettingsType) => void }> = ({ settings, onSave }) => {
   const [ls, setLs] = useState(settings);
   return (
     <div className="max-w-xl mx-auto bg-white p-10 rounded-[3rem] shadow-2xl border-t-[10px] border-orange-600 space-y-8 animate-in slide-in-from-bottom-4">
